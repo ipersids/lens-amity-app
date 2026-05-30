@@ -38,7 +38,7 @@ func main() {
 		}
 	}()
 
-	// set up gracefull shotdown
+	// set up gracefull shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
