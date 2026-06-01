@@ -1,10 +1,17 @@
+import { Route, Routes } from "react-router";
+import Header from "./components/Header";
+
 function App() {
   return (
-    <section id="container" className="flex justify-center">
-      <div className="w-75 bg-white dark:bg-black rounded-xl shadow-md overflow-hidden">
-        <h1 className="text-lg dark:text-white font-bold p-2">Project Title</h1>
-      </div>
-    </section>
+    <div className="flex flex-col h-screen w-full max-w-6xl">
+      <Routes>
+        <Route element={<Header />}>
+          <Route path="/" element={<p>APP</p>} />
+          <Route path="/login" element={<p>LOGIN</p>} />
+          <Route path="/signup" element={<p>SIGNUP</p>} />
+        </Route>
+      </Routes>
+    </div>
   );
 }
 
