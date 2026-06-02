@@ -20,7 +20,7 @@ services:
     build:
       context: ./server
       dockerfile: build/dev.Dockerfile
-    image: api:dev
+    container_name: api
     command: ["air", "-c", "air.toml"]
     volumes:
       - ./server:/app
