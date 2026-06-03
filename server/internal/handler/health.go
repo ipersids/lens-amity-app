@@ -12,7 +12,7 @@ type healthResponse struct {
 	Time   string `json:"time"`
 }
 
-func HealthCheck(w http.ResponseWriter, r *http.Request) {
+func (_ *Env) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	body := healthResponse{
