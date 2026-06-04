@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"lensamity/internal/db"
 	"lensamity/internal/handler"
 	"lensamity/internal/middleware"
 	"log/slog"
@@ -12,13 +13,27 @@ import (
 	"time"
 )
 
-func registerRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /health", handler.HealthCheck)
+func registerRoutes(mux *http.ServeMux, app *handler.Env) {
+	mux.HandleFunc("GET /health", app.HealthCheck)
 }
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	store, err := db.InitStore(ctx)
+	if err != nil {
+		slog.Error("store initialisation failed", "error", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	app := &handler.Env{
+		Store: store,
+	}
+
 	mux := http.NewServeMux()
-	registerRoutes(mux)
+	registerRoutes(mux, app)
 
 	handler := middleware.Logging(mux)
 
@@ -38,18 +53,14 @@ func main() {
 		}
 	}()
 
-	// set up gracefull shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-quit
-	slog.Info("shutting down server", "signal", sig.String())
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	<-ctx.Done()
+	slog.Info("shutting down server")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := server.Shutdown(ctx); err != nil {
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server forced to shutdown", "error", err)
 		os.Exit(1)
 	}
-
-	slog.Info("server stopped gracefully")
 }
