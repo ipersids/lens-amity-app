@@ -21,6 +21,7 @@ profile.cov
 # vendor/
 
 tmp/
+./cmd/tmp.go
 
 # Go workspace file
 go.work

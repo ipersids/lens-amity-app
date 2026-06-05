@@ -1,25 +1,26 @@
 -- name: GetUser :one
 SELECT * FROM users
-WHERE id = $1 LIMIT 1;
+WHERE uuid = $1 LIMIT 1;
 
 -- name: ListUsers :many
 SELECT * FROM users
-ORDER BY username;
+ORDER BY username_display;
 
 -- name: CreateUser :one
 INSERT INTO users (
-  id, username, password_hash
+  uuid, username_key, username_display, password_hash
 ) VALUES (
-  $1, $2, $3
+  $1, $2, $3, $4
 )
-RETURNING id, username;
+RETURNING uuid, username_key, username_display;
 
 -- name: UpdateUser :one
 UPDATE users
-  set username = $2
-WHERE id = $1
-RETURNING id, username;
+  set username_key = $2,
+  username_display = $3
+WHERE uuid = $1
+RETURNING uuid, username_key, username_display;
 
 -- name: DeleteUser :exec
 DELETE FROM users
-WHERE id = $1;
+WHERE uuid = $1;

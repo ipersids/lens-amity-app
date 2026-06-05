@@ -14,6 +14,9 @@ import (
 )
 
 func registerRoutes(mux *http.ServeMux, app *handler.Env) {
+	// apiMux := http.NewServeMux()
+
+	mux.HandleFunc("POST /api/signup", app.Signup)
 	mux.HandleFunc("GET /health", app.HealthCheck)
 }
 
