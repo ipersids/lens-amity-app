@@ -34,3 +34,13 @@ type SignupReponseBody struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 }
+
+type UserProfileReponse struct {
+	Data UserProfileReponseBody `json:"data"`
+}
+
+type UserProfileReponseBody struct {
+	Uuid        string `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+}

@@ -14,10 +14,10 @@ import (
 )
 
 func registerRoutes(mux *http.ServeMux, app *handler.Env) {
-	// apiMux := http.NewServeMux()
+	mux.HandleFunc("GET /health", app.HealthCheck)
 
 	mux.HandleFunc("POST /api/signup", app.Signup)
-	mux.HandleFunc("GET /health", app.HealthCheck)
+	mux.HandleFunc("GET /api/users/{id}", app.UserProfile)
 }
 
 func main() {

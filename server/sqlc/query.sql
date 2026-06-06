@@ -1,6 +1,6 @@
 -- name: GetUser :one
-SELECT * FROM users
-WHERE uuid = $1 LIMIT 1;
+SELECT uuid, username_key, username_display FROM users
+WHERE uuid = $1;
 
 -- name: ListUsers :many
 SELECT * FROM users
