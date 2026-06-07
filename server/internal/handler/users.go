@@ -8,12 +8,13 @@ import (
 	"net/http"
 )
 
-func (e *Env) UserProfile(w http.ResponseWriter, r *http.Request) {
+func (e *Env) GetUserProfile(w http.ResponseWriter, r *http.Request) {
 	userUUID := r.PathValue("id")
 
 	user, err := core.GetUserProfile(e.Store, core.UserProfileDTO{UUID: userUUID})
 	if err != nil {
-		if errors.Is(err, core.ErrorUserProfile) {
+		if errors.Is(err, core.ErrorGetUserProfile) {
+			slog.Error("UserProfile not found", "error", err)
 			http.NotFound(w, r)
 			return
 		}

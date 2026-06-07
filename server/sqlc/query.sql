@@ -2,10 +2,6 @@
 SELECT uuid, username_key, username_display FROM users
 WHERE uuid = $1;
 
--- name: ListUsers :many
-SELECT * FROM users
-ORDER BY username_display;
-
 -- name: CreateUser :one
 INSERT INTO users (
   uuid, username_key, username_display, password_hash

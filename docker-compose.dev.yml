@@ -1,6 +1,7 @@
 services:
   db:
-    image: postgres:18-alpine
+    build:
+      dockerfile: server/build/dev/db.Dockerfile
     container_name: db
     environment:
       POSTGRES_USER: postgres
@@ -8,6 +9,7 @@ services:
       POSTGRES_DB: test
     ports:
       - "5432:5432"
+    command: ["postgres", "-c", "shared_preload_libraries=pg_cron", "-c", "cron.database_name=test"]
     volumes:
       - data:/var/lib/postgresql
     healthcheck:
@@ -19,7 +21,7 @@ services:
   api:
     build:
       context: ./server
-      dockerfile: build/dev.Dockerfile
+      dockerfile: build/dev/api.Dockerfile
     container_name: api
     command: ["air", "-c", "air.toml"]
     volumes:

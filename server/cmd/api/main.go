@@ -16,8 +16,15 @@ import (
 func registerRoutes(mux *http.ServeMux, app *handler.Env) {
 	mux.HandleFunc("GET /health", app.HealthCheck)
 
-	mux.HandleFunc("POST /api/signup", app.Signup)
-	mux.HandleFunc("GET /api/users/{id}", app.UserProfile)
+	mux.HandleFunc("POST /api/auth/signup", app.Signup)
+	// mux.HandleFunc("POST /api/auth/login", app.Login)
+	// mux.HandleFunc("POST /api/auth/logout", app.Logout)
+
+	// mux.HandleFunc("GET /api/users", app.ListUsers)
+	// mux.HandleFunc("GET /api/users/me", app.GetMyProfile)
+	// mux.HandleFunc("PATCH /api/users/me", app.UpdateMyProfile)
+	// mux.HandleFunc("DELETE /api/users/me", app.DeleteMyProfile)
+	mux.HandleFunc("GET /api/users/{id}", app.GetUserProfile)
 }
 
 func main() {
