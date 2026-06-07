@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"lensamity/internal/db"
 	"lensamity/internal/hash"
-	"log/slog"
 	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/nbutton23/zxcvbn-go"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
@@ -27,6 +25,22 @@ type CreateUserDTO struct {
 	RawUsername    string
 	RawDisplayName string
 	RawPassword    string
+}
+
+type LoginDTO struct {
+	RawUsername string
+	RawPassword string
+}
+
+type LoggedUserDTO struct {
+	Token        string
+	RefreshToken string
+	User         db.GetPublicUserProfileRow
+}
+
+type customClaims struct {
+	Username string `json:"username"`
+	jwt.RegisteredClaims
 }
 
 var (
@@ -56,16 +70,7 @@ func CreateUser(s *db.Store, u CreateUserDTO) (*db.CreateUserRow, error) {
 		return nil, err
 	}
 
-	uuid, err := uuid.NewV7()
-	if err != nil {
-		return nil, err
-	}
-
 	user, err := s.Queries.CreateUser(context.Background(), db.CreateUserParams{
-		Uuid: pgtype.UUID{
-			Bytes: uuid,
-			Valid: true,
-		},
 		UsernameKey:     ukey,
 		PasswordHash:    hash,
 		UsernameDisplay: udisplay,
@@ -77,6 +82,31 @@ func CreateUser(s *db.Store, u CreateUserDTO) (*db.CreateUserRow, error) {
 
 	return &user, nil
 }
+
+func Login(s *db.Store, l LoginDTO) (*LoggedUserDTO, error) {
+	p := norm.NFC.String(l.RawPassword)
+	ukey := normKey(l.RawUsername)
+
+	uPrivate, err := s.Queries.GetFullUserDataByKey(context.Background(), ukey)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := hash.CompareHashAndPassword(uPrivate.PasswordHash, []byte(p)); err != nil {
+		return nil, err
+	}
+
+	return &LoggedUserDTO{
+		Token:        "",
+		RefreshToken: "",
+		User: db.GetPublicUserProfileRow{
+			UsernameKey:     uPrivate.UsernameKey,
+			UsernameDisplay: uPrivate.UsernameDisplay,
+		},
+	}, nil
+}
+
+// ------------------------------ PRIVATE HELPERS ------------------------------
 
 func normDisplay(s string) string {
 	return norm.NFC.String(strings.TrimSpace(s))
@@ -110,7 +140,7 @@ func validatePassword(p string, userInputs []string) error {
 	}
 
 	score := zxcvbn.PasswordStrength(p, userInputs)
-	slog.Info("score", "v", score)
+
 	if score.Score < 3 {
 		return errors.New("password is too weak and easy to guess")
 	}

@@ -9,9 +9,9 @@ import (
 )
 
 func (e *Env) GetUserProfile(w http.ResponseWriter, r *http.Request) {
-	userUUID := r.PathValue("id")
+	username := r.PathValue("username")
 
-	user, err := core.GetUserProfile(e.Store, core.UserProfileDTO{UUID: userUUID})
+	user, err := core.GetUserProfile(e.Store, core.UserProfileDTO{Username: username})
 	if err != nil {
 		if errors.Is(err, core.ErrorGetUserProfile) {
 			slog.Error("UserProfile not found", "error", err)
@@ -23,9 +23,8 @@ func (e *Env) GetUserProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = json.NewEncoder(w).Encode(UserProfileReponse{
+	err = json.NewEncoder(w).Encode(SuccessResponse{
 		Data: UserProfileReponseBody{
-			Uuid:        user.Uuid.String(),
 			Username:    user.UsernameKey,
 			DisplayName: user.UsernameDisplay,
 		},

@@ -19,28 +19,22 @@ type ErrorBody struct {
 	Message string `json:"message"`
 }
 
+type SuccessResponse struct {
+	Data any `json:"data"`
+}
+
 type SignupRequest struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 	Password    string `json:"password"`
 }
 
-type SignupReponse struct {
-	Data SignupReponseBody `json:"data"`
-}
-
-type SignupReponseBody struct {
-	Uuid        string `json:"id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-}
-
-type UserProfileReponse struct {
-	Data UserProfileReponseBody `json:"data"`
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type UserProfileReponseBody struct {
-	Uuid        string `json:"id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 }

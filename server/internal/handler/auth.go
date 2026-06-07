@@ -12,8 +12,7 @@ func (e *Env) Signup(w http.ResponseWriter, r *http.Request) {
 	var req SignupRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		slog.Debug("failed to decode SignupRequest", "error", err)
-		// WriteError(w, http.StatusBadRequest, http.StatusText(http.StatusBadRequest), "Invalid email or password")
+		slog.Error("failed to decode SignupRequest", "error", err)
 		http.Error(w, "malformed JSON", http.StatusBadRequest)
 		return
 	}
@@ -39,9 +38,8 @@ func (e *Env) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = json.NewEncoder(w).Encode(SignupReponse{
-		Data: SignupReponseBody{
-			Uuid:        user.Uuid.String(),
+	err = json.NewEncoder(w).Encode(SuccessResponse{
+		Data: UserProfileReponseBody{
 			Username:    user.UsernameKey,
 			DisplayName: user.UsernameDisplay,
 		},
@@ -49,5 +47,38 @@ func (e *Env) Signup(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		slog.Error("Signup: failed encode response", "error", err)
+	}
+}
+
+func (e *Env) Login(w http.ResponseWriter, r *http.Request) {
+	var req LoginRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		slog.Error("failed to decode LoginRequest", "error", err)
+		http.Error(w, "malformed JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.Username == "" || req.Password == "" {
+		http.Error(w, "invalid credentials", http.StatusBadRequest)
+		return
+	}
+
+	data, err := core.Login(e.Store, core.LoginDTO{RawUsername: req.Username, RawPassword: req.Password})
+	if err != nil {
+		slog.Error("Login request failed", "error", err)
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(SuccessResponse{
+		Data: UserProfileReponseBody{
+			Username:    data.User.UsernameKey,
+			DisplayName: data.User.UsernameDisplay,
+		},
+	})
+
+	if err != nil {
+		slog.Error("Login: failed encode response", "error", err)
 	}
 }
