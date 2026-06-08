@@ -7,114 +7,205 @@ package db
 
 import (
 	"context"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createUser = `-- name: CreateUser :one
-INSERT INTO users (
-  id, username, password_hash
+const createNewRefreshToken = `-- name: CreateNewRefreshToken :exec
+INSERT INTO refresh_tokens (
+  id, user_id, expires_at
 ) VALUES (
   $1, $2, $3
 )
-RETURNING id, username
+`
+
+type CreateNewRefreshTokenParams struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	ExpiresAt time.Time
+}
+
+func (q *Queries) CreateNewRefreshToken(ctx context.Context, arg CreateNewRefreshTokenParams) error {
+	_, err := q.db.Exec(ctx, createNewRefreshToken, arg.ID, arg.UserID, arg.ExpiresAt)
+	return err
+}
+
+const createUser = `-- name: CreateUser :one
+INSERT INTO users (
+  username_key, username_display, password_hash
+) VALUES (
+  $1, $2, $3
+)
+RETURNING username_key, username_display
 `
 
 type CreateUserParams struct {
-	ID           pgtype.UUID
-	Username     string
-	PasswordHash string
+	UsernameKey     string
+	UsernameDisplay string
+	PasswordHash    string
 }
 
 type CreateUserRow struct {
-	ID       pgtype.UUID
-	Username string
+	UsernameKey     string
+	UsernameDisplay string
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.ID, arg.Username, arg.PasswordHash)
+	row := q.db.QueryRow(ctx, createUser, arg.UsernameKey, arg.UsernameDisplay, arg.PasswordHash)
 	var i CreateUserRow
-	err := row.Scan(&i.ID, &i.Username)
+	err := row.Scan(&i.UsernameKey, &i.UsernameDisplay)
 	return i, err
 }
 
 const deleteUser = `-- name: DeleteUser :exec
 DELETE FROM users
-WHERE id = $1
+WHERE username_key = $1
 `
 
-func (q *Queries) DeleteUser(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteUser, id)
+func (q *Queries) DeleteUser(ctx context.Context, usernameKey string) error {
+	_, err := q.db.Exec(ctx, deleteUser, usernameKey)
 	return err
 }
 
-const getUser = `-- name: GetUser :one
-SELECT id, username, password_hash, created_at FROM users
-WHERE id = $1 LIMIT 1
+const getFullUserDataByKey = `-- name: GetFullUserDataByKey :one
+SELECT id, username_key, username_display, password_hash FROM users
+WHERE username_key = $1
 `
 
-func (q *Queries) GetUser(ctx context.Context, id pgtype.UUID) (User, error) {
-	row := q.db.QueryRow(ctx, getUser, id)
-	var i User
+type GetFullUserDataByKeyRow struct {
+	ID              uuid.UUID
+	UsernameKey     string
+	UsernameDisplay string
+	PasswordHash    string
+}
+
+func (q *Queries) GetFullUserDataByKey(ctx context.Context, usernameKey string) (GetFullUserDataByKeyRow, error) {
+	row := q.db.QueryRow(ctx, getFullUserDataByKey, usernameKey)
+	var i GetFullUserDataByKeyRow
 	err := row.Scan(
 		&i.ID,
-		&i.Username,
+		&i.UsernameKey,
+		&i.UsernameDisplay,
 		&i.PasswordHash,
-		&i.CreatedAt,
 	)
 	return i, err
 }
 
-const listUsers = `-- name: ListUsers :many
-SELECT id, username, password_hash, created_at FROM users
-ORDER BY username
+const getPublicUserProfile = `-- name: GetPublicUserProfile :one
+SELECT username_key, username_display FROM users
+WHERE username_key = $1
 `
 
-func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := q.db.Query(ctx, listUsers)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []User
-	for rows.Next() {
-		var i User
-		if err := rows.Scan(
-			&i.ID,
-			&i.Username,
-			&i.PasswordHash,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+type GetPublicUserProfileRow struct {
+	UsernameKey     string
+	UsernameDisplay string
+}
+
+func (q *Queries) GetPublicUserProfile(ctx context.Context, usernameKey string) (GetPublicUserProfileRow, error) {
+	row := q.db.QueryRow(ctx, getPublicUserProfile, usernameKey)
+	var i GetPublicUserProfileRow
+	err := row.Scan(&i.UsernameKey, &i.UsernameDisplay)
+	return i, err
+}
+
+const getRefreshTokenForUpdate = `-- name: GetRefreshTokenForUpdate :one
+SELECT id, user_id, revoked, expires_at,
+  grace_period_until, replaced_by_access, replaced_by_refresh
+FROM refresh_tokens
+WHERE id = $1 AND user_id = $2
+FOR UPDATE
+`
+
+type GetRefreshTokenForUpdateParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+type GetRefreshTokenForUpdateRow struct {
+	ID                uuid.UUID
+	UserID            uuid.UUID
+	Revoked           bool
+	ExpiresAt         time.Time
+	GracePeriodUntil  pgtype.Timestamptz
+	ReplacedByAccess  pgtype.Text
+	ReplacedByRefresh pgtype.Text
+}
+
+func (q *Queries) GetRefreshTokenForUpdate(ctx context.Context, arg GetRefreshTokenForUpdateParams) (GetRefreshTokenForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getRefreshTokenForUpdate, arg.ID, arg.UserID)
+	var i GetRefreshTokenForUpdateRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Revoked,
+		&i.ExpiresAt,
+		&i.GracePeriodUntil,
+		&i.ReplacedByAccess,
+		&i.ReplacedByRefresh,
+	)
+	return i, err
+}
+
+const removeAllUserTokens = `-- name: RemoveAllUserTokens :exec
+DELETE FROM refresh_tokens
+WHERE user_id = $1
+`
+
+func (q *Queries) RemoveAllUserTokens(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, removeAllUserTokens, userID)
+	return err
+}
+
+const rotateRefreshToken = `-- name: RotateRefreshToken :exec
+UPDATE refresh_tokens
+SET revoked = true,
+    grace_period_until = $2,
+    replaced_by_access = $3,
+    replaced_by_refresh = $4
+WHERE id = $1
+`
+
+type RotateRefreshTokenParams struct {
+	ID                uuid.UUID
+	GracePeriodUntil  pgtype.Timestamptz
+	ReplacedByAccess  pgtype.Text
+	ReplacedByRefresh pgtype.Text
+}
+
+func (q *Queries) RotateRefreshToken(ctx context.Context, arg RotateRefreshTokenParams) error {
+	_, err := q.db.Exec(ctx, rotateRefreshToken,
+		arg.ID,
+		arg.GracePeriodUntil,
+		arg.ReplacedByAccess,
+		arg.ReplacedByRefresh,
+	)
+	return err
 }
 
 const updateUser = `-- name: UpdateUser :one
 UPDATE users
-  set username = $2
-WHERE id = $1
-RETURNING id, username
+  set username_key = $2,
+  username_display = $3
+WHERE username_key = $1
+RETURNING username_key, username_display
 `
 
 type UpdateUserParams struct {
-	ID       pgtype.UUID
-	Username string
+	UsernameKey     string
+	UsernameKey_2   string
+	UsernameDisplay string
 }
 
 type UpdateUserRow struct {
-	ID       pgtype.UUID
-	Username string
+	UsernameKey     string
+	UsernameDisplay string
 }
 
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error) {
-	row := q.db.QueryRow(ctx, updateUser, arg.ID, arg.Username)
+	row := q.db.QueryRow(ctx, updateUser, arg.UsernameKey, arg.UsernameKey_2, arg.UsernameDisplay)
 	var i UpdateUserRow
-	err := row.Scan(&i.ID, &i.Username)
+	err := row.Scan(&i.UsernameKey, &i.UsernameDisplay)
 	return i, err
 }

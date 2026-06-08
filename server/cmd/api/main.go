@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"lensamity/internal/core"
 	"lensamity/internal/db"
 	"lensamity/internal/handler"
 	"lensamity/internal/middleware"
@@ -13,27 +14,55 @@ import (
 	"time"
 )
 
-func registerRoutes(mux *http.ServeMux, app *handler.Env) {
-	mux.HandleFunc("GET /health", app.HealthCheck)
+type handlers struct {
+	auth *handler.AuthHandler
+	user *handler.UserHandler
+}
+
+func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware func(http.HandlerFunc) http.HandlerFunc) {
+	// 1. Public routes
+	mux.HandleFunc("GET /health", handler.HealthCheck)
+	mux.HandleFunc("POST /api/auth/signup", h.auth.Signup)
+	mux.HandleFunc("POST /api/auth/login", h.auth.Login)
+	mux.HandleFunc("POST /api/auth/refresh", h.auth.Refresh)
+
+	// 2. @TODO Context-aware Profile route
+	mux.HandleFunc("GET /api/users/{username}", authRequiredMiddleware(h.user.GetUserProfile))
+
+	// 3. Strict Session Protected routes
+	// mux.Handle("GET /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.GetMyProfile)))
+	// mux.Handle("PATCH /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.UpdateMyProfile)))
+	// mux.Handle("DELETE /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.DeleteMyProfile)))
 }
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	store, err := db.InitStore(ctx)
+	conf, err := core.InitConfig()
+	if err != nil {
+		slog.Error("config initialisation failed", "error", err)
+		os.Exit(1)
+	}
+
+	store, err := db.InitStore(ctx, conf.DatabaseURL)
 	if err != nil {
 		slog.Error("store initialisation failed", "error", err)
 		os.Exit(1)
 	}
 	defer store.Close()
 
-	app := &handler.Env{
-		Store: store,
+	mux := http.NewServeMux()
+
+	authService := core.NewAuthService(store, &conf.Auth)
+	userService := core.NewUserService(store)
+
+	h := handlers{
+		auth: handler.NewAuthHandler(authService),
+		user: handler.NewUserHandler(userService),
 	}
 
-	mux := http.NewServeMux()
-	registerRoutes(mux, app)
+	h.registerRoutes(mux, middleware.StrictAuth(authService))
 
 	handler := middleware.Logging(mux)
 

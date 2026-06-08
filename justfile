@@ -45,3 +45,5 @@ start: build (up '-d') migrate
 [private]
 exec-db user='postgres' db='test':
     docker exec -it db psql -U {{ user }} -d {{ db }}
+
+mod server

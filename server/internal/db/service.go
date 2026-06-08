@@ -4,7 +4,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,12 +14,7 @@ type Store struct {
 	Pool    *pgxpool.Pool
 }
 
-func InitStore(ctx context.Context) (*Store, error) {
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		return nil, fmt.Errorf("DATABASE_URL is empty")
-	}
-
+func InitStore(ctx context.Context, dbURL string) (*Store, error) {
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pool: %w", err)
