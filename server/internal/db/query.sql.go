@@ -10,30 +10,25 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createRefreshToken = `-- name: CreateRefreshToken :exec
+const createNewRefreshToken = `-- name: CreateNewRefreshToken :exec
 INSERT INTO refresh_tokens (
-  id, user_id, token, expires_at
+  id, user_id, expires_at
 ) VALUES (
-  $1, $2, $3, $4
+  $1, $2, $3
 )
 `
 
-type CreateRefreshTokenParams struct {
+type CreateNewRefreshTokenParams struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
-	Token     string
 	ExpiresAt time.Time
 }
 
-func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error {
-	_, err := q.db.Exec(ctx, createRefreshToken,
-		arg.ID,
-		arg.UserID,
-		arg.Token,
-		arg.ExpiresAt,
-	)
+func (q *Queries) CreateNewRefreshToken(ctx context.Context, arg CreateNewRefreshTokenParams) error {
+	_, err := q.db.Exec(ctx, createNewRefreshToken, arg.ID, arg.UserID, arg.ExpiresAt)
 	return err
 }
 
@@ -62,16 +57,6 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 	var i CreateUserRow
 	err := row.Scan(&i.UsernameKey, &i.UsernameDisplay)
 	return i, err
-}
-
-const deleteAllRefreshTokensByUserID = `-- name: DeleteAllRefreshTokensByUserID :exec
-DELETE FROM refresh_tokens
-WHERE user_id = $1
-`
-
-func (q *Queries) DeleteAllRefreshTokensByUserID(ctx context.Context, userID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteAllRefreshTokensByUserID, userID)
-	return err
 }
 
 const deleteUser = `-- name: DeleteUser :exec
@@ -125,20 +110,78 @@ func (q *Queries) GetPublicUserProfile(ctx context.Context, usernameKey string) 
 	return i, err
 }
 
-const revokeActiveToken = `-- name: RevokeActiveToken :one
-UPDATE refresh_tokens
-SET revoked = true
-WHERE id = $1
-  AND revoked = false
-  AND expires_at > now()
-RETURNING user_id
+const getRefreshTokenForUpdate = `-- name: GetRefreshTokenForUpdate :one
+SELECT id, user_id, revoked, expires_at,
+  grace_period_until, replaced_by_access, replaced_by_refresh
+FROM refresh_tokens
+WHERE id = $1 AND user_id = $2
+FOR UPDATE
 `
 
-func (q *Queries) RevokeActiveToken(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, revokeActiveToken, id)
-	var user_id uuid.UUID
-	err := row.Scan(&user_id)
-	return user_id, err
+type GetRefreshTokenForUpdateParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+type GetRefreshTokenForUpdateRow struct {
+	ID                uuid.UUID
+	UserID            uuid.UUID
+	Revoked           bool
+	ExpiresAt         time.Time
+	GracePeriodUntil  pgtype.Timestamptz
+	ReplacedByAccess  pgtype.Text
+	ReplacedByRefresh pgtype.Text
+}
+
+func (q *Queries) GetRefreshTokenForUpdate(ctx context.Context, arg GetRefreshTokenForUpdateParams) (GetRefreshTokenForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getRefreshTokenForUpdate, arg.ID, arg.UserID)
+	var i GetRefreshTokenForUpdateRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Revoked,
+		&i.ExpiresAt,
+		&i.GracePeriodUntil,
+		&i.ReplacedByAccess,
+		&i.ReplacedByRefresh,
+	)
+	return i, err
+}
+
+const removeAllUserTokens = `-- name: RemoveAllUserTokens :exec
+DELETE FROM refresh_tokens
+WHERE user_id = $1
+`
+
+func (q *Queries) RemoveAllUserTokens(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, removeAllUserTokens, userID)
+	return err
+}
+
+const rotateRefreshToken = `-- name: RotateRefreshToken :exec
+UPDATE refresh_tokens
+SET revoked = true,
+    grace_period_until = $2,
+    replaced_by_access = $3,
+    replaced_by_refresh = $4
+WHERE id = $1
+`
+
+type RotateRefreshTokenParams struct {
+	ID                uuid.UUID
+	GracePeriodUntil  pgtype.Timestamptz
+	ReplacedByAccess  pgtype.Text
+	ReplacedByRefresh pgtype.Text
+}
+
+func (q *Queries) RotateRefreshToken(ctx context.Context, arg RotateRefreshTokenParams) error {
+	_, err := q.db.Exec(ctx, rotateRefreshToken,
+		arg.ID,
+		arg.GracePeriodUntil,
+		arg.ReplacedByAccess,
+		arg.ReplacedByRefresh,
+	)
+	return err
 }
 
 const updateUser = `-- name: UpdateUser :one

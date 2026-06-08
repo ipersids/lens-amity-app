@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"lensamity/internal/db"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nbutton23/zxcvbn-go"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
@@ -40,6 +43,7 @@ func (s *AuthService) ValidateAccessToken(tokenStr string) (*jwt.RegisteredClaim
 var (
 	usernameRegex         = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,32}$`)
 	ErrorCreateUserFailed = errors.New("invalid credentials")
+	ErrCompromisedToken   = errors.New("token was compromised")
 )
 
 func (s *AuthService) Signup(ctx context.Context, uername, displayName, password string) (*db.CreateUserRow, error) {
@@ -99,12 +103,106 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 	if err != nil {
 		return "", "", err
 	}
-	refreshToken, err := s.signRefreshToken(ctx, uPrivate.ID, nowUTC)
+	refreshTokenData, err := s.signRefreshToken(ctx, uPrivate.ID, nowUTC)
 	if err != nil {
 		return "", "", err
 	}
 
-	return token, refreshToken, nil
+	err = s.store.Queries.CreateNewRefreshToken(ctx, db.CreateNewRefreshTokenParams{
+		ID:        refreshTokenData.id,
+		UserID:    uPrivate.ID,
+		ExpiresAt: refreshTokenData.claims.ExpiresAt.Time,
+	})
+	if err != nil {
+		return "", "", err
+	}
+
+	return token, refreshTokenData.token, nil
+}
+
+func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string, string, error) {
+	claims, err := validateToken(refreshToken, s.conf.RefreshSecret)
+	if err != nil {
+		return "", "", err
+	}
+
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return "", "", err
+	}
+
+	now := time.Now().Truncate(time.Second)
+
+	tokenID, err := uuid.Parse(claims.ID)
+	if err != nil {
+		return "", "", err
+	}
+
+	tx, err := s.store.Pool.Begin(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	defer tx.Rollback(ctx)
+
+	rtoken, err := s.store.Queries.WithTx(tx).GetRefreshTokenForUpdate(ctx, db.GetRefreshTokenForUpdateParams{ID: tokenID, UserID: userID})
+	if err != nil {
+		return "", "", err
+	}
+
+	if rtoken.Revoked {
+		if !rtoken.ReplacedByAccess.Valid || !rtoken.ReplacedByRefresh.Valid {
+			return "", "", ErrInvalidToken
+		}
+		if rtoken.GracePeriodUntil.Valid && time.Now().Before(rtoken.GracePeriodUntil.Time) {
+			return rtoken.ReplacedByAccess.String, rtoken.ReplacedByRefresh.String, nil
+		}
+		// enable reuse detection
+		if err := s.store.Queries.WithTx(tx).RemoveAllUserTokens(ctx, userID); err != nil {
+			slog.Error("1. Refresh service: failed remove compromised user tokens", "userID", userID.String())
+			return "", "", fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
+		}
+		if err := tx.Commit(ctx); err != nil {
+			slog.Error("2. Refresh service: failed remove compromised user tokens", "userID", userID.String())
+			return "", "", fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
+		}
+		slog.Error("Refresh service: DATA BREACH DETECTED", "userID", userID.String())
+		return "", "", ErrCompromisedToken
+	}
+
+	accessToken, err := s.signAccessToken(ctx, userID, now)
+	if err != nil {
+		return "", "", err
+	}
+
+	refreshTokenData, err := s.signRefreshToken(ctx, userID, now)
+	if err != nil {
+		return "", "", err
+	}
+
+	err = s.store.Queries.WithTx(tx).RotateRefreshToken(ctx, db.RotateRefreshTokenParams{
+		ID:                rtoken.ID,
+		GracePeriodUntil:  pgtype.Timestamptz{Time: now.Add(3 * time.Second), Valid: true},
+		ReplacedByAccess:  pgtype.Text{String: accessToken, Valid: true},
+		ReplacedByRefresh: pgtype.Text{String: refreshTokenData.token, Valid: true},
+	})
+	if err != nil {
+		return "", "", err
+	}
+
+	err = s.store.Queries.WithTx(tx).CreateNewRefreshToken(ctx, db.CreateNewRefreshTokenParams{
+		ID:        refreshTokenData.id,
+		UserID:    userID,
+		ExpiresAt: refreshTokenData.claims.ExpiresAt.Time,
+	})
+	if err != nil {
+		return "", "", err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return "", "", err
+	}
+
+	return accessToken, refreshTokenData.token, nil
 }
 
 // ------------------------------ PRIVATE HELPERS ------------------------------

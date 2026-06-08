@@ -40,7 +40,7 @@ func InitConfig() (*Config, error) {
 			JWTsecret:     jwtSecret,
 			RefreshSecret: refreshSecret,
 			JWTexpiry:     15 * time.Minute,
-			RefreshExpiry: 7 * 24 * time.Hour,
+			RefreshExpiry: 24 * time.Hour,
 		},
 	}, nil
 }

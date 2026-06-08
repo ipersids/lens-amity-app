@@ -12,12 +12,14 @@ import (
 )
 
 type RefreshToken struct {
-	ID        uuid.UUID
-	UserID    uuid.UUID
-	Token     string
-	ExpiresAt time.Time
-	CreatedAt time.Time
-	Revoked   bool
+	ID                uuid.UUID
+	UserID            uuid.UUID
+	ExpiresAt         time.Time
+	CreatedAt         time.Time
+	Revoked           bool
+	GracePeriodUntil  pgtype.Timestamptz
+	ReplacedByAccess  pgtype.Text
+	ReplacedByRefresh pgtype.Text
 }
 
 type User struct {

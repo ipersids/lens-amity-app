@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"errors"
-	"lensamity/internal/db"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -33,10 +32,16 @@ func (s *AuthService) signAccessToken(ctx context.Context, userID uuid.UUID, now
 	return accessToken, nil
 }
 
-func (s *AuthService) signRefreshToken(ctx context.Context, userID uuid.UUID, nowUTC time.Time) (string, error) {
+type signedRefreshTokenData struct {
+	id     uuid.UUID
+	claims *jwt.RegisteredClaims
+	token  string
+}
+
+func (s *AuthService) signRefreshToken(ctx context.Context, userID uuid.UUID, nowUTC time.Time) (*signedRefreshTokenData, error) {
 	refreshTokenUUID, err := uuid.NewV7()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	refreshTokenClaims := jwt.RegisteredClaims{
@@ -51,20 +56,14 @@ func (s *AuthService) signRefreshToken(ctx context.Context, userID uuid.UUID, no
 
 	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshTokenClaims).SignedString([]byte(s.conf.RefreshSecret))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	err = s.store.Queries.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
-		ID:        refreshTokenUUID,
-		UserID:    userID,
-		Token:     refreshToken,
-		ExpiresAt: refreshTokenClaims.ExpiresAt.Time,
-	})
-	if err != nil {
-		return "", err
-	}
-
-	return refreshToken, nil
+	return &signedRefreshTokenData{
+		id:     refreshTokenUUID,
+		claims: &refreshTokenClaims,
+		token:  refreshToken,
+	}, nil
 }
 
 func validateToken(tokenStr string, base string) (*jwt.RegisteredClaims, error) {

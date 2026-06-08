@@ -21,9 +21,9 @@ func NewAuthHandler(authService *core.AuthService) *AuthHandler {
 }
 
 type SignupRequest struct {
-	Username    string `json:"username"`
+	Username    string `json:"username" validate:"required"`
 	DisplayName string `json:"display_name"`
-	Password    string `json:"password"`
+	Password    string `json:"password" validate:"required"`
 }
 
 type SignupResponse struct {
@@ -34,7 +34,9 @@ type SignupResponse struct {
 func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	var req SignupRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
 		slog.Error("failed to decode SignupRequest", "error", err)
 		http.Error(w, "malformed JSON", http.StatusBadRequest)
 		return
@@ -69,8 +71,8 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 }
 
 type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username string `json:"username" validate:"required"`
+	Password string `json:"password" validate:"required"`
 }
 
 type LoginResponse struct {
@@ -81,7 +83,9 @@ type LoginResponse struct {
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
 		slog.Error("failed to decode LoginRequest", "error", err)
 		http.Error(w, "malformed JSON", http.StatusBadRequest)
 		return
@@ -111,5 +115,51 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		slog.Error("Login: failed encode response", "error", err)
+	}
+}
+
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+type RefreshResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	var req RefreshRequest
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		slog.Error("failed to decode RefreshRequest", "error", err)
+		http.Error(w, "malformed request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.RefreshToken == "" {
+		http.Error(w, "malformed request body", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	accessToken, refreshToken, err := h.authService.Refresh(ctx, req.RefreshToken)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			http.Error(w, "Database timeout exceeded", http.StatusGatewayTimeout)
+			return
+		}
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(RefreshResponse{AccessToken: accessToken, RefreshToken: refreshToken})
+
+	if err != nil {
+		slog.Error("Refresh: failed encode response", "error", err)
 	}
 }
