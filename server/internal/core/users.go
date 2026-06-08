@@ -15,9 +15,12 @@ var (
 	ErrorGetUserProfile = errors.New("")
 )
 
-func GetUserProfile(s *db.Store, u UserProfileDTO) (*db.GetPublicUserProfileRow, error) {
-	user, err := s.Queries.GetPublicUserProfile(context.Background(), u.Username)
+func GetUserProfile(ctx context.Context, s *db.Store, u UserProfileDTO) (*db.GetPublicUserProfileRow, error) {
+	user, err := s.Queries.GetPublicUserProfile(ctx, u.Username)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("db error: %w %s", ErrorGetUserProfile, err.Error())
 	}
 

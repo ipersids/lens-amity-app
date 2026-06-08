@@ -24,7 +24,11 @@ func (e *Env) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := core.CreateUser(e.Store, core.CreateUserDTO{
+	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	user, err := core.CreateUser(ctx, e.Store, core.CreateUserDTO{
 		RawUsername:    req.Username,
 		RawDisplayName: req.DisplayName,
 		RawPassword:    req.Password,

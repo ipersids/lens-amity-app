@@ -50,7 +50,7 @@ var (
 	ErrorCreateUserFailed = errors.New("invalid credentials")
 )
 
-func CreateUser(s *db.Store, u CreateUserDTO) (*db.CreateUserRow, error) {
+func CreateUser(ctx context.Context, s *db.Store, u CreateUserDTO) (*db.CreateUserRow, error) {
 	p := norm.NFC.String(u.RawPassword)
 	ukey := normKey(u.RawUsername)
 	udisplay := normDisplay(u.RawDisplayName)
@@ -72,13 +72,16 @@ func CreateUser(s *db.Store, u CreateUserDTO) (*db.CreateUserRow, error) {
 		return nil, err
 	}
 
-	user, err := s.Queries.CreateUser(context.Background(), db.CreateUserParams{
+	user, err := s.Queries.CreateUser(ctx, db.CreateUserParams{
 		UsernameKey:     ukey,
 		PasswordHash:    hash,
 		UsernameDisplay: udisplay,
 	})
 
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
 		return nil, ErrorCreateUserFailed
 	}
 
