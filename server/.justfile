@@ -1,4 +1,5 @@
 set dotenv-load := true
+set fallback := true
 
 migrate:
     go run cmd/migrator/main.go

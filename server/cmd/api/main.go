@@ -19,14 +19,14 @@ type handlers struct {
 	user *handler.UserHandler
 }
 
-func (h *handlers) registerRoutes(mux *http.ServeMux) {
+func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware func(http.HandlerFunc) http.HandlerFunc) {
 	// 1. Public routes
 	mux.HandleFunc("GET /health", handler.HealthCheck)
 	mux.HandleFunc("POST /api/auth/signup", h.auth.Signup)
 	mux.HandleFunc("POST /api/auth/login", h.auth.Login)
 
 	// 2. @TODO Context-aware Profile route
-	mux.HandleFunc("GET /api/users/{username}", h.user.GetUserProfile)
+	mux.HandleFunc("GET /api/users/{username}", authRequiredMiddleware(h.user.GetUserProfile))
 
 	// 3. Strict Session Protected routes
 	// mux.Handle("GET /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.GetMyProfile)))
@@ -61,7 +61,7 @@ func main() {
 		user: handler.NewUserHandler(userService),
 	}
 
-	h.registerRoutes(mux)
+	h.registerRoutes(mux, middleware.StrictAuth(authService))
 
 	handler := middleware.Logging(mux)
 

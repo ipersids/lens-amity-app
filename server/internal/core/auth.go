@@ -12,7 +12,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"github.com/nbutton23/zxcvbn-go"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
@@ -32,6 +31,10 @@ func NewAuthService(s *db.Store, confAuth *Auth) *AuthService {
 		conf:  confAuth,
 		store: s,
 	}
+}
+
+func (s *AuthService) ValidateAccessToken(tokenStr string) (*jwt.RegisteredClaims, error) {
+	return validateToken(tokenStr, s.conf.JWTsecret)
 }
 
 var (
@@ -90,7 +93,13 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 		return "", "", err
 	}
 
-	token, refreshToken, err := s.issueTokens(ctx, uPrivate.ID)
+	nowUTC := time.Now().UTC()
+
+	token, err := s.signAccessToken(ctx, uPrivate.ID, nowUTC)
+	if err != nil {
+		return "", "", err
+	}
+	refreshToken, err := s.signRefreshToken(ctx, uPrivate.ID, nowUTC)
 	if err != nil {
 		return "", "", err
 	}
@@ -99,57 +108,6 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 }
 
 // ------------------------------ PRIVATE HELPERS ------------------------------
-
-// Returns token and refreshToken in JWT format
-func (s *AuthService) issueTokens(ctx context.Context, userID uuid.UUID) (string, string, error) {
-	now := time.Now().UTC()
-
-	refreshTokenUUID, err := uuid.NewV7()
-	if err != nil {
-		return "", "", err
-	}
-
-	accessTokenClaims := jwt.RegisteredClaims{
-		Issuer:    "lensamity-app",
-		Subject:   userID.String(),
-		Audience:  jwt.ClaimStrings{"USER"},
-		ExpiresAt: jwt.NewNumericDate(now.Add(s.conf.JWTexpiry)),
-		IssuedAt:  jwt.NewNumericDate(now),
-		NotBefore: jwt.NewNumericDate(now),
-	}
-
-	refreshTokenClaims := jwt.RegisteredClaims{
-		ID:        refreshTokenUUID.String(),
-		Issuer:    "lensamity-app",
-		Subject:   userID.String(),
-		Audience:  jwt.ClaimStrings{"USER"},
-		ExpiresAt: jwt.NewNumericDate(now.Add(s.conf.RefreshExpiry)),
-		IssuedAt:  jwt.NewNumericDate(now),
-		NotBefore: jwt.NewNumericDate(now),
-	}
-
-	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessTokenClaims).SignedString([]byte(s.conf.JWTsecret))
-	if err != nil {
-		return "", "", err
-	}
-
-	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshTokenClaims).SignedString([]byte(s.conf.RefreshSecret))
-	if err != nil {
-		return "", "", err
-	}
-
-	err = s.store.Queries.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
-		ID:        refreshTokenUUID,
-		UserID:    userID,
-		Token:     refreshToken,
-		ExpiresAt: refreshTokenClaims.ExpiresAt.Time,
-	})
-	if err != nil {
-		return "", "", err
-	}
-
-	return accessToken, refreshToken, nil
-}
 
 func normDisplay(s string) string {
 	return norm.NFC.String(strings.TrimSpace(s))
