@@ -7,16 +7,22 @@ import (
 	"lensamity/internal/db"
 )
 
-type UserProfileDTO struct {
-	Username string
+type UserService struct {
+	store *db.Store
+}
+
+func NewUserService(s *db.Store) *UserService {
+	return &UserService{
+		store: s,
+	}
 }
 
 var (
 	ErrorGetUserProfile = errors.New("")
 )
 
-func GetUserProfile(ctx context.Context, s *db.Store, u UserProfileDTO) (*db.GetPublicUserProfileRow, error) {
-	user, err := s.Queries.GetPublicUserProfile(ctx, u.Username)
+func (s *UserService) GetUserProfile(ctx context.Context, username string) (*db.GetPublicUserProfileRow, error) {
+	user, err := s.store.Queries.GetPublicUserProfile(ctx, username)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, err

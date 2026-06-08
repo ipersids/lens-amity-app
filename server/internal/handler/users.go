@@ -10,14 +10,29 @@ import (
 	"time"
 )
 
-func (e *Env) GetUserProfile(w http.ResponseWriter, r *http.Request) {
+type UserHandler struct {
+	userService *core.UserService
+}
+
+func NewUserHandler(userService *core.UserService) *UserHandler {
+	return &UserHandler{
+		userService: userService,
+	}
+}
+
+type GetUserProfileResponse struct {
+	Username    string
+	DisplayName string
+}
+
+func (h *UserHandler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("username")
 
 	ctx := r.Context()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	user, err := core.GetUserProfile(ctx, e.Store, core.UserProfileDTO{Username: username})
+	user, err := h.userService.GetUserProfile(ctx, username)
 	if err != nil {
 		if errors.Is(err, core.ErrorGetUserProfile) {
 			slog.Error("UserProfile not found", "error", err)
@@ -29,12 +44,7 @@ func (e *Env) GetUserProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = json.NewEncoder(w).Encode(SuccessResponse{
-		Data: UserProfileReponseBody{
-			Username:    user.UsernameKey,
-			DisplayName: user.UsernameDisplay,
-		},
-	})
+	err = json.NewEncoder(w).Encode(GetUserProfileResponse{Username: user.UsernameKey, DisplayName: user.UsernameDisplay})
 
 	if err != nil {
 		slog.Error("UserProfile handler: failed encode response", "error", err)

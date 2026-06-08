@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"lensamity/internal/db"
-	"lensamity/internal/hash"
 	"regexp"
 	"strings"
 	"time"
@@ -23,26 +22,16 @@ import (
 // - NIST, SP 800-63B, authentication assurance: https://pages.nist.gov/800-63-4/sp800-63b.html
 // - Unicode, Technical Standard #39, https://www.unicode.org/reports/tr39/#Restriction_Level_Detection
 
-type CreateUserDTO struct {
-	RawUsername    string
-	RawDisplayName string
-	RawPassword    string
+type AuthService struct {
+	conf  *Auth
+	store *db.Store
 }
 
-type LoginDTO struct {
-	RawUsername string
-	RawPassword string
-}
-
-type LoggedUserDTO struct {
-	Token        string
-	RefreshToken string
-	User         db.GetPublicUserProfileRow
-}
-
-type customClaims struct {
-	Username string `json:"username"`
-	jwt.RegisteredClaims
+func NewAuthService(s *db.Store, confAuth *Auth) *AuthService {
+	return &AuthService{
+		conf:  confAuth,
+		store: s,
+	}
 }
 
 var (
@@ -50,10 +39,10 @@ var (
 	ErrorCreateUserFailed = errors.New("invalid credentials")
 )
 
-func CreateUser(ctx context.Context, s *db.Store, u CreateUserDTO) (*db.CreateUserRow, error) {
-	p := norm.NFC.String(u.RawPassword)
-	ukey := normKey(u.RawUsername)
-	udisplay := normDisplay(u.RawDisplayName)
+func (s *AuthService) Signup(ctx context.Context, uername, displayName, password string) (*db.CreateUserRow, error) {
+	p := norm.NFC.String(password)
+	ukey := normKey(uername)
+	udisplay := normDisplay(displayName)
 
 	if err := validateUsernameKey(ukey); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrorCreateUserFailed, err.Error())
@@ -64,15 +53,15 @@ func CreateUser(ctx context.Context, s *db.Store, u CreateUserDTO) (*db.CreateUs
 	}
 
 	if udisplay == "" {
-		udisplay = normDisplay(u.RawUsername)
+		udisplay = normDisplay(uername)
 	}
 
-	hash, err := hash.GenerateFromPassword([]byte(p))
+	hash, err := generateFromPassword([]byte(p))
 	if err != nil {
 		return nil, err
 	}
 
-	user, err := s.Queries.CreateUser(ctx, db.CreateUserParams{
+	user, err := s.store.Queries.CreateUser(ctx, db.CreateUserParams{
 		UsernameKey:     ukey,
 		PasswordHash:    hash,
 		UsernameDisplay: udisplay,
@@ -88,38 +77,31 @@ func CreateUser(ctx context.Context, s *db.Store, u CreateUserDTO) (*db.CreateUs
 	return &user, nil
 }
 
-func Login(ctx context.Context, conf *Auth, s *db.Store, l LoginDTO) (*LoggedUserDTO, error) {
-	p := norm.NFC.String(l.RawPassword)
-	ukey := normKey(l.RawUsername)
+func (s *AuthService) Login(ctx context.Context, username, password string) (string, string, error) {
+	p := norm.NFC.String(password)
+	ukey := normKey(username)
 
-	uPrivate, err := s.Queries.GetFullUserDataByKey(ctx, ukey)
+	uPrivate, err := s.store.Queries.GetFullUserDataByKey(ctx, ukey)
 	if err != nil {
-		return nil, err
+		return "", "", err
 	}
 
-	if err := hash.CompareHashAndPassword(uPrivate.PasswordHash, []byte(p)); err != nil {
-		return nil, err
+	if err := compareHashAndPassword(uPrivate.PasswordHash, []byte(p)); err != nil {
+		return "", "", err
 	}
 
-	token, refreshToken, err := conf.issueTokens(ctx, s.Queries, uPrivate.ID)
+	token, refreshToken, err := s.issueTokens(ctx, uPrivate.ID)
 	if err != nil {
-		return nil, err
+		return "", "", err
 	}
 
-	return &LoggedUserDTO{
-		Token:        token,
-		RefreshToken: refreshToken,
-		User: db.GetPublicUserProfileRow{
-			UsernameKey:     uPrivate.UsernameKey,
-			UsernameDisplay: uPrivate.UsernameDisplay,
-		},
-	}, nil
+	return token, refreshToken, nil
 }
 
 // ------------------------------ PRIVATE HELPERS ------------------------------
 
 // Returns token and refreshToken in JWT format
-func (conf *Auth) issueTokens(ctx context.Context, q *db.Queries, userID uuid.UUID) (string, string, error) {
+func (s *AuthService) issueTokens(ctx context.Context, userID uuid.UUID) (string, string, error) {
 	now := time.Now().UTC()
 
 	refreshTokenUUID, err := uuid.NewV7()
@@ -131,7 +113,7 @@ func (conf *Auth) issueTokens(ctx context.Context, q *db.Queries, userID uuid.UU
 		Issuer:    "lensamity-app",
 		Subject:   userID.String(),
 		Audience:  jwt.ClaimStrings{"USER"},
-		ExpiresAt: jwt.NewNumericDate(now.Add(conf.JWTexpiry)),
+		ExpiresAt: jwt.NewNumericDate(now.Add(s.conf.JWTexpiry)),
 		IssuedAt:  jwt.NewNumericDate(now),
 		NotBefore: jwt.NewNumericDate(now),
 	}
@@ -141,22 +123,22 @@ func (conf *Auth) issueTokens(ctx context.Context, q *db.Queries, userID uuid.UU
 		Issuer:    "lensamity-app",
 		Subject:   userID.String(),
 		Audience:  jwt.ClaimStrings{"USER"},
-		ExpiresAt: jwt.NewNumericDate(now.Add(conf.RefreshExpiry)),
+		ExpiresAt: jwt.NewNumericDate(now.Add(s.conf.RefreshExpiry)),
 		IssuedAt:  jwt.NewNumericDate(now),
 		NotBefore: jwt.NewNumericDate(now),
 	}
 
-	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessTokenClaims).SignedString([]byte(conf.JWTsecret))
+	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessTokenClaims).SignedString([]byte(s.conf.JWTsecret))
 	if err != nil {
 		return "", "", err
 	}
 
-	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshTokenClaims).SignedString([]byte(conf.RefreshSecret))
+	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshTokenClaims).SignedString([]byte(s.conf.RefreshSecret))
 	if err != nil {
 		return "", "", err
 	}
 
-	err = q.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
+	err = s.store.Queries.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
 		ID:        refreshTokenUUID,
 		UserID:    userID,
 		Token:     refreshToken,

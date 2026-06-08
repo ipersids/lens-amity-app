@@ -1,4 +1,4 @@
-package hash
+package core
 
 import (
 	"crypto/rand"
@@ -65,7 +65,7 @@ func getDefaultParams() *params {
 // https://github.com/P-H-C/phc-winner-argon2#command-line-utility
 // type - version - memory - iterations - parallelism - salt - key
 // $argon2id$v=19$m=65536,t=2,p=4$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG
-func GenerateFromPassword(password []byte) (string, error) {
+func generateFromPassword(password []byte) (string, error) {
 	p := getDefaultParams()
 
 	salt, err := getSalt(p.SaltLen)
@@ -85,7 +85,7 @@ func GenerateFromPassword(password []byte) (string, error) {
 	return hash, nil
 }
 
-func CompareHashAndPassword(hashedPassword string, password []byte) error {
+func compareHashAndPassword(hashedPassword string, password []byte) error {
 	h, err := parseHash(hashedPassword)
 
 	if err != nil {

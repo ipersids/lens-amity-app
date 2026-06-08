@@ -1,4 +1,4 @@
-package hash
+package core
 
 import (
 	"encoding/base64"
@@ -37,7 +37,7 @@ func TestGenerateFromPassword(t *testing.T) {
 
 	password := []byte("secret^+-ä75736437Lk'de")
 
-	hash1, err := GenerateFromPassword(password)
+	hash1, err := generateFromPassword(password)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestGenerateFromPassword(t *testing.T) {
 		t.Errorf("prefix mismatch: %s != %s", prefix, hash1)
 	}
 
-	hash2, err := GenerateFromPassword(password)
+	hash2, err := generateFromPassword(password)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,12 +120,12 @@ func TestCompareHashAndPassword(t *testing.T) {
 	password1 := []byte("secret^+-ä75736437Lk'de")
 	password2 := []byte("NOTsecret^+-ä75736437Lk'de")
 
-	hash1, err := GenerateFromPassword(password1)
+	hash1, err := generateFromPassword(password1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	hash2, err := GenerateFromPassword(password2)
+	hash2, err := generateFromPassword(password2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestCompareHashAndPassword(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.testname, func(t *testing.T) {
-			err := CompareHashAndPassword(tt.h, password2)
+			err := compareHashAndPassword(tt.h, password2)
 			if !errors.Is(err, tt.want) {
 				t.Errorf("password validation: %s\ngot %v, want %v", tt.h, err, tt.want)
 			}

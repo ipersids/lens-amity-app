@@ -14,14 +14,19 @@ import (
 	"time"
 )
 
-func registerRoutes(mux *http.ServeMux, app *handler.Env) {
+type handlers struct {
+	auth *handler.AuthHandler
+	user *handler.UserHandler
+}
+
+func (h *handlers) registerRoutes(mux *http.ServeMux) {
 	// 1. Public routes
-	mux.HandleFunc("GET /health", app.HealthCheck)
-	mux.HandleFunc("POST /api/auth/signup", app.Signup)
-	mux.HandleFunc("POST /api/auth/login", app.Login)
+	mux.HandleFunc("GET /health", handler.HealthCheck)
+	mux.HandleFunc("POST /api/auth/signup", h.auth.Signup)
+	mux.HandleFunc("POST /api/auth/login", h.auth.Login)
 
 	// 2. @TODO Context-aware Profile route
-	mux.HandleFunc("GET /api/users/{username}", app.GetUserProfile)
+	mux.HandleFunc("GET /api/users/{username}", h.user.GetUserProfile)
 
 	// 3. Strict Session Protected routes
 	// mux.Handle("GET /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.GetMyProfile)))
@@ -46,13 +51,17 @@ func main() {
 	}
 	defer store.Close()
 
-	app := handler.Env{
-		Store:  store,
-		Config: conf,
+	mux := http.NewServeMux()
+
+	authService := core.NewAuthService(store, &conf.Auth)
+	userService := core.NewUserService(store)
+
+	h := handlers{
+		auth: handler.NewAuthHandler(authService),
+		user: handler.NewUserHandler(userService),
 	}
 
-	mux := http.NewServeMux()
-	registerRoutes(mux, &app)
+	h.registerRoutes(mux)
 
 	handler := middleware.Logging(mux)
 
