@@ -8,10 +8,12 @@ import (
 	"lensamity/internal/hash"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/nbutton23/zxcvbn-go"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
@@ -83,11 +85,11 @@ func CreateUser(s *db.Store, u CreateUserDTO) (*db.CreateUserRow, error) {
 	return &user, nil
 }
 
-func Login(s *db.Store, l LoginDTO) (*LoggedUserDTO, error) {
+func Login(ctx context.Context, conf *Auth, s *db.Store, l LoginDTO) (*LoggedUserDTO, error) {
 	p := norm.NFC.String(l.RawPassword)
 	ukey := normKey(l.RawUsername)
 
-	uPrivate, err := s.Queries.GetFullUserDataByKey(context.Background(), ukey)
+	uPrivate, err := s.Queries.GetFullUserDataByKey(ctx, ukey)
 	if err != nil {
 		return nil, err
 	}
@@ -96,9 +98,14 @@ func Login(s *db.Store, l LoginDTO) (*LoggedUserDTO, error) {
 		return nil, err
 	}
 
+	token, refreshToken, err := conf.issueTokens(ctx, s.Queries, uPrivate.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &LoggedUserDTO{
-		Token:        "",
-		RefreshToken: "",
+		Token:        token,
+		RefreshToken: refreshToken,
 		User: db.GetPublicUserProfileRow{
 			UsernameKey:     uPrivate.UsernameKey,
 			UsernameDisplay: uPrivate.UsernameDisplay,
@@ -107,6 +114,57 @@ func Login(s *db.Store, l LoginDTO) (*LoggedUserDTO, error) {
 }
 
 // ------------------------------ PRIVATE HELPERS ------------------------------
+
+// Returns token and refreshToken in JWT format
+func (conf *Auth) issueTokens(ctx context.Context, q *db.Queries, userID uuid.UUID) (string, string, error) {
+	now := time.Now().UTC()
+
+	refreshTokenUUID, err := uuid.NewV7()
+	if err != nil {
+		return "", "", err
+	}
+
+	accessTokenClaims := jwt.RegisteredClaims{
+		Issuer:    "lensamity-app",
+		Subject:   userID.String(),
+		Audience:  jwt.ClaimStrings{"USER"},
+		ExpiresAt: jwt.NewNumericDate(now.Add(conf.JWTexpiry)),
+		IssuedAt:  jwt.NewNumericDate(now),
+		NotBefore: jwt.NewNumericDate(now),
+	}
+
+	refreshTokenClaims := jwt.RegisteredClaims{
+		ID:        refreshTokenUUID.String(),
+		Issuer:    "lensamity-app",
+		Subject:   userID.String(),
+		Audience:  jwt.ClaimStrings{"USER"},
+		ExpiresAt: jwt.NewNumericDate(now.Add(conf.RefreshExpiry)),
+		IssuedAt:  jwt.NewNumericDate(now),
+		NotBefore: jwt.NewNumericDate(now),
+	}
+
+	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessTokenClaims).SignedString([]byte(conf.JWTsecret))
+	if err != nil {
+		return "", "", err
+	}
+
+	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshTokenClaims).SignedString([]byte(conf.RefreshSecret))
+	if err != nil {
+		return "", "", err
+	}
+
+	err = q.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
+		ID:        refreshTokenUUID,
+		UserID:    userID,
+		Token:     refreshToken,
+		ExpiresAt: refreshTokenClaims.ExpiresAt.Time,
+	})
+	if err != nil {
+		return "", "", err
+	}
+
+	return accessToken, refreshToken, nil
+}
 
 func normDisplay(s string) string {
 	return norm.NFC.String(strings.TrimSpace(s))

@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"lensamity/internal/core"
 	"lensamity/internal/db"
 )
 
 type Env struct {
-	*db.Store
+	Store  *db.Store
+	Config *core.Config
 }
 
 // DTO -->
@@ -32,6 +34,12 @@ type SignupRequest struct {
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+}
+
+type LoginResponseBody struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	User         UserProfileReponseBody
 }
 
 type UserProfileReponseBody struct {

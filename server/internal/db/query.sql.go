@@ -7,8 +7,9 @@ package db
 
 import (
 	"context"
+	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
 const createRefreshToken = `-- name: CreateRefreshToken :exec
@@ -20,10 +21,10 @@ INSERT INTO refresh_tokens (
 `
 
 type CreateRefreshTokenParams struct {
-	ID        pgtype.UUID
-	UserID    pgtype.UUID
+	ID        uuid.UUID
+	UserID    uuid.UUID
 	Token     string
-	ExpiresAt pgtype.Timestamptz
+	ExpiresAt time.Time
 }
 
 func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error {
@@ -68,7 +69,7 @@ DELETE FROM refresh_tokens
 WHERE user_id = $1
 `
 
-func (q *Queries) DeleteAllRefreshTokensByUserID(ctx context.Context, userID pgtype.UUID) error {
+func (q *Queries) DeleteAllRefreshTokensByUserID(ctx context.Context, userID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteAllRefreshTokensByUserID, userID)
 	return err
 }
@@ -89,7 +90,7 @@ WHERE username_key = $1
 `
 
 type GetFullUserDataByKeyRow struct {
-	ID              pgtype.UUID
+	ID              uuid.UUID
 	UsernameKey     string
 	UsernameDisplay string
 	PasswordHash    string
@@ -133,9 +134,9 @@ WHERE id = $1
 RETURNING user_id
 `
 
-func (q *Queries) RevokeActiveToken(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+func (q *Queries) RevokeActiveToken(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, revokeActiveToken, id)
-	var user_id pgtype.UUID
+	var user_id uuid.UUID
 	err := row.Scan(&user_id)
 	return user_id, err
 }

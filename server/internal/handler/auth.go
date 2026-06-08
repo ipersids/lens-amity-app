@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"lensamity/internal/core"
 	"log/slog"
 	"net/http"
+	"time"
 )
 
 func (e *Env) Signup(w http.ResponseWriter, r *http.Request) {
@@ -64,17 +66,31 @@ func (e *Env) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := core.Login(e.Store, core.LoginDTO{RawUsername: req.Username, RawPassword: req.Password})
+	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	l := core.LoginDTO{RawUsername: req.Username, RawPassword: req.Password}
+
+	data, err := core.Login(ctx, &e.Config.Auth, e.Store, l)
 	if err != nil {
 		slog.Error("Login request failed", "error", err)
+		if errors.Is(err, context.DeadlineExceeded) {
+			http.Error(w, "Database timeout exceeded", http.StatusGatewayTimeout)
+			return
+		}
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(SuccessResponse{
-		Data: UserProfileReponseBody{
-			Username:    data.User.UsernameKey,
-			DisplayName: data.User.UsernameDisplay,
+		Data: LoginResponseBody{
+			AccessToken:  data.Token,
+			RefreshToken: data.RefreshToken,
+			User: UserProfileReponseBody{
+				Username:    data.User.UsernameKey,
+				DisplayName: data.User.UsernameDisplay,
+			},
 		},
 	})
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"lensamity/internal/core"
 	"lensamity/internal/db"
 	"lensamity/internal/handler"
 	"lensamity/internal/middleware"
@@ -32,19 +33,26 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	store, err := db.InitStore(ctx)
+	conf, err := core.InitConfig()
+	if err != nil {
+		slog.Error("config initialisation failed", "error", err)
+		os.Exit(1)
+	}
+
+	store, err := db.InitStore(ctx, conf.DatabaseURL)
 	if err != nil {
 		slog.Error("store initialisation failed", "error", err)
 		os.Exit(1)
 	}
 	defer store.Close()
 
-	app := &handler.Env{
-		Store: store,
+	app := handler.Env{
+		Store:  store,
+		Config: conf,
 	}
 
 	mux := http.NewServeMux()
-	registerRoutes(mux, app)
+	registerRoutes(mux, &app)
 
 	handler := middleware.Logging(mux)
 
