@@ -14,6 +14,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nbutton23/zxcvbn-go"
 	"golang.org/x/text/cases"
@@ -203,6 +204,32 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string,
 	}
 
 	return accessToken, refreshTokenData.token, nil
+}
+
+func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
+	claims, err := validateToken(refreshToken, s.conf.RefreshSecret)
+	if err != nil {
+		slog.Error("1", "", err)
+		return nil
+	}
+
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		slog.Error("2", "", err)
+		return err
+	}
+
+	tokenID, err := uuid.Parse(claims.ID)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.store.Queries.RevokeRefreshToken(ctx, db.RevokeRefreshTokenParams{ID: tokenID, UserID: userID})
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+
+	return nil
 }
 
 // ------------------------------ PRIVATE HELPERS ------------------------------

@@ -12,7 +12,7 @@ RETURNING username_key, username_display;
 
 -- name: UpdateUser :one
 UPDATE users
-  set username_key = $2,
+  SET username_key = $2,
   username_display = $3
 WHERE username_key = $1
 RETURNING username_key, username_display;
@@ -46,6 +46,12 @@ UPDATE refresh_tokens
     replaced_by_access = $3,
     replaced_by_refresh = $4
 WHERE id = $1;
+
+-- name: RevokeRefreshToken :one
+UPDATE refresh_tokens
+    SET revoked = true
+WHERE id = $1 AND user_id = $2 AND revoked = false
+RETURNING id;
 
 -- name: RevokeAllUserTokens :exec
 UPDATE refresh_tokens
