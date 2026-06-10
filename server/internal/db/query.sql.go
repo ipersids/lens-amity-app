@@ -148,19 +148,20 @@ func (q *Queries) GetRefreshTokenForUpdate(ctx context.Context, arg GetRefreshTo
 	return i, err
 }
 
-const removeAllUserTokens = `-- name: RemoveAllUserTokens :exec
-DELETE FROM refresh_tokens
-WHERE user_id = $1
+const revokeAllUserTokens = `-- name: RevokeAllUserTokens :exec
+UPDATE refresh_tokens
+    SET revoked = true
+WHERE user_id = $1 AND revoked = false
 `
 
-func (q *Queries) RemoveAllUserTokens(ctx context.Context, userID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, removeAllUserTokens, userID)
+func (q *Queries) RevokeAllUserTokens(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, revokeAllUserTokens, userID)
 	return err
 }
 
 const rotateRefreshToken = `-- name: RotateRefreshToken :exec
 UPDATE refresh_tokens
-SET revoked = true,
+    SET revoked = true,
     grace_period_until = $2,
     replaced_by_access = $3,
     replaced_by_refresh = $4

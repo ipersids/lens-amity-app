@@ -41,12 +41,13 @@ INSERT INTO refresh_tokens (
 
 -- name: RotateRefreshToken :exec
 UPDATE refresh_tokens
-SET revoked = true,
+    SET revoked = true,
     grace_period_until = $2,
     replaced_by_access = $3,
     replaced_by_refresh = $4
 WHERE id = $1;
 
--- name: RemoveAllUserTokens :exec
-DELETE FROM refresh_tokens
-WHERE user_id = $1;
+-- name: RevokeAllUserTokens :exec
+UPDATE refresh_tokens
+    SET revoked = true
+WHERE user_id = $1 AND revoked = false;

@@ -157,7 +157,7 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string,
 			return rtoken.ReplacedByAccess.String, rtoken.ReplacedByRefresh.String, nil
 		}
 		// enable reuse detection
-		if err := s.store.Queries.WithTx(tx).RemoveAllUserTokens(ctx, userID); err != nil {
+		if err := s.store.Queries.WithTx(tx).RevokeAllUserTokens(ctx, userID); err != nil {
 			slog.Error("1. Refresh service: failed remove compromised user tokens", "userID", userID.String())
 			return "", "", fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
 		}
