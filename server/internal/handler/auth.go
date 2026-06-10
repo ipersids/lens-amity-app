@@ -21,9 +21,9 @@ func NewAuthHandler(authService *core.AuthService) *AuthHandler {
 }
 
 type SignupRequest struct {
-	Username    string `json:"username" validate:"required"`
+	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
-	Password    string `json:"password" validate:"required"`
+	Password    string `json:"password"`
 }
 
 type SignupResponse struct {
@@ -71,8 +71,8 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 }
 
 type LoginRequest struct {
-	Username string `json:"username" validate:"required"`
-	Password string `json:"password" validate:"required"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type LoginResponse struct {
@@ -119,7 +119,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token" validate:"required"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 type RefreshResponse struct {
@@ -162,4 +162,37 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("Refresh: failed encode response", "error", err)
 	}
+}
+
+type LogoutRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	var req RefreshRequest
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		slog.Error("failed to decode LogoutRequest", "error", err)
+		http.Error(w, "malformed request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.RefreshToken == "" {
+		http.Error(w, "malformed request body", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	err := h.authService.Logout(ctx, req.RefreshToken)
+	if err != nil {
+		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

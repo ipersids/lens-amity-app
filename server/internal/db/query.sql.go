@@ -159,6 +159,25 @@ func (q *Queries) RevokeAllUserTokens(ctx context.Context, userID uuid.UUID) err
 	return err
 }
 
+const revokeRefreshToken = `-- name: RevokeRefreshToken :one
+UPDATE refresh_tokens
+    SET revoked = true
+WHERE id = $1 AND user_id = $2 AND revoked = false
+RETURNING id
+`
+
+type RevokeRefreshTokenParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) RevokeRefreshToken(ctx context.Context, arg RevokeRefreshTokenParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, revokeRefreshToken, arg.ID, arg.UserID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const rotateRefreshToken = `-- name: RotateRefreshToken :exec
 UPDATE refresh_tokens
     SET revoked = true,
@@ -187,7 +206,7 @@ func (q *Queries) RotateRefreshToken(ctx context.Context, arg RotateRefreshToken
 
 const updateUser = `-- name: UpdateUser :one
 UPDATE users
-  set username_key = $2,
+  SET username_key = $2,
   username_display = $3
 WHERE username_key = $1
 RETURNING username_key, username_display
