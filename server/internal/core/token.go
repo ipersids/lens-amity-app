@@ -10,15 +10,17 @@ import (
 )
 
 var (
-	ErrInvalidToken = errors.New("invalid token")
-	ErrExpiredToken = errors.New("token has expired")
+	tokenIssuer       = "lensamity-app"
+	tokenAudienceUser = "USER"
+	ErrInvalidToken   = errors.New("invalid token")
+	ErrExpiredToken   = errors.New("token has expired")
 )
 
 func (s *AuthService) signAccessToken(ctx context.Context, userID uuid.UUID, nowUTC time.Time) (string, error) {
 	accessTokenClaims := jwt.RegisteredClaims{
-		Issuer:    "lensamity-app",
+		Issuer:    tokenIssuer,
 		Subject:   userID.String(),
-		Audience:  jwt.ClaimStrings{"USER"},
+		Audience:  jwt.ClaimStrings{tokenAudienceUser},
 		ExpiresAt: jwt.NewNumericDate(nowUTC.Add(s.conf.JWTexpiry)),
 		IssuedAt:  jwt.NewNumericDate(nowUTC),
 		NotBefore: jwt.NewNumericDate(nowUTC),
@@ -46,9 +48,9 @@ func (s *AuthService) signRefreshToken(ctx context.Context, userID uuid.UUID, no
 
 	refreshTokenClaims := jwt.RegisteredClaims{
 		ID:        refreshTokenUUID.String(),
-		Issuer:    "lensamity-app",
+		Issuer:    tokenIssuer,
 		Subject:   userID.String(),
-		Audience:  jwt.ClaimStrings{"USER"},
+		Audience:  jwt.ClaimStrings{tokenAudienceUser},
 		ExpiresAt: jwt.NewNumericDate(nowUTC.Add(s.conf.RefreshExpiry)),
 		IssuedAt:  jwt.NewNumericDate(nowUTC),
 		NotBefore: jwt.NewNumericDate(nowUTC),
@@ -71,7 +73,11 @@ func validateToken(tokenStr string, base string) (*jwt.RegisteredClaims, error) 
 
 	parsedToken, err := jwt.ParseWithClaims(tokenStr, &claims, func(token *jwt.Token) (any, error) {
 		return []byte(base), nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer(tokenIssuer),
+		jwt.WithAudience(tokenAudienceUser),
+	)
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
