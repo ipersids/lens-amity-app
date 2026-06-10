@@ -1,4 +1,6 @@
 -- +goose Up
+CREATE TYPE token_revoked_reason AS ENUM ('refresh', 'logout', 'replayed');
+
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -6,8 +8,8 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     revoked BOOLEAN NOT NULL DEFAULT FALSE,
     grace_period_until TIMESTAMPTZ,
-    replaced_by_access TEXT,
-    replaced_by_refresh TEXT
+    revoked_at TIMESTAMPTZ,
+    revoked_reason token_revoked_reason
 );
 
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);

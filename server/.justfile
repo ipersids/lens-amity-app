@@ -12,3 +12,6 @@ serv:
 
 air:
     air -c air.toml
+
+goose-create NAME="NAME":
+    goose create {{ NAME }} sql

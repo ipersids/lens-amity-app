@@ -121,73 +121,80 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 	return token, refreshTokenData.token, nil
 }
 
-func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string, string, error) {
+type RefreshResult struct {
+	AccessToken  string
+	RefreshToken string
+	Replayed     bool
+}
+
+func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*RefreshResult, error) {
 	claims, err := validateToken(refreshToken, s.conf.RefreshSecret)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	userID, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	now := time.Now().Truncate(time.Second)
 
 	tokenID, err := uuid.Parse(claims.ID)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	tx, err := s.store.Pool.Begin(ctx)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
 	rtoken, err := s.store.Queries.WithTx(tx).GetRefreshTokenForUpdate(ctx, db.GetRefreshTokenForUpdateParams{ID: tokenID, UserID: userID})
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	if rtoken.Revoked {
-		if !rtoken.ReplacedByAccess.Valid || !rtoken.ReplacedByRefresh.Valid {
-			return "", "", ErrInvalidToken
-		}
 		if rtoken.GracePeriodUntil.Valid && time.Now().Before(rtoken.GracePeriodUntil.Time) {
-			return rtoken.ReplacedByAccess.String, rtoken.ReplacedByRefresh.String, nil
+			return &RefreshResult{
+				Replayed:     true,
+				AccessToken:  "",
+				RefreshToken: "",
+			}, nil
 		}
 		// enable reuse detection
-		if err := s.store.Queries.WithTx(tx).RevokeAllUserTokens(ctx, userID); err != nil {
-			slog.Error("1. Refresh service: failed remove compromised user tokens", "userID", userID.String())
-			return "", "", fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
+		if _, err := s.store.Queries.WithTx(tx).RevokeAllUserTokens(ctx, db.RevokeAllUserTokensParams{
+			UserID:        userID,
+			RevokedReason: db.NullTokenRevokedReason{TokenRevokedReason: db.TokenRevokedReasonReplayed, Valid: true},
+		}); err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
 		}
 		if err := tx.Commit(ctx); err != nil {
-			slog.Error("2. Refresh service: failed remove compromised user tokens", "userID", userID.String())
-			return "", "", fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
+			return nil, fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
 		}
-		slog.Error("Refresh service: DATA BREACH DETECTED", "userID", userID.String())
-		return "", "", ErrCompromisedToken
+		return nil, ErrCompromisedToken
 	}
 
 	accessToken, err := s.signAccessToken(ctx, userID, now)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	refreshTokenData, err := s.signRefreshToken(ctx, userID, now)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
-	err = s.store.Queries.WithTx(tx).RotateRefreshToken(ctx, db.RotateRefreshTokenParams{
-		ID:                rtoken.ID,
-		GracePeriodUntil:  pgtype.Timestamptz{Time: now.Add(3 * time.Second), Valid: true},
-		ReplacedByAccess:  pgtype.Text{String: accessToken, Valid: true},
-		ReplacedByRefresh: pgtype.Text{String: refreshTokenData.token, Valid: true},
+	_, err = s.store.Queries.WithTx(tx).RotateRefreshToken(ctx, db.RotateRefreshTokenParams{
+		ID:               tokenID,
+		UserID:           userID,
+		GracePeriodUntil: pgtype.Timestamptz{Time: now.Add(3 * time.Second), Valid: true},
+		RevokedReason:    db.NullTokenRevokedReason{TokenRevokedReason: db.TokenRevokedReasonRefresh, Valid: true},
 	})
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	err = s.store.Queries.WithTx(tx).CreateNewRefreshToken(ctx, db.CreateNewRefreshTokenParams{
@@ -196,14 +203,18 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string,
 		ExpiresAt: refreshTokenData.claims.ExpiresAt.Time,
 	})
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return "", "", err
+		return nil, err
 	}
 
-	return accessToken, refreshTokenData.token, nil
+	return &RefreshResult{
+		Replayed:     false,
+		AccessToken:  accessToken,
+		RefreshToken: refreshTokenData.token,
+	}, nil
 }
 
 func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
@@ -233,7 +244,10 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 }
 
 func (s *AuthService) LogoutAll(ctx context.Context, userID uuid.UUID) error {
-	err := s.store.Queries.RevokeAllUserTokens(ctx, userID)
+	_, err := s.store.Queries.RevokeAllUserTokens(ctx, db.RevokeAllUserTokensParams{
+		UserID:        userID,
+		RevokedReason: db.NullTokenRevokedReason{TokenRevokedReason: db.TokenRevokedReasonLogout, Valid: true},
+	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}

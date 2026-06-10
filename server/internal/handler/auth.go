@@ -150,17 +150,22 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	accessToken, refreshToken, err := h.authService.Refresh(ctx, req.RefreshToken)
+	refreshed, err := h.authService.Refresh(ctx, req.RefreshToken)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			http.Error(w, "Database timeout exceeded", http.StatusGatewayTimeout)
+			http.Error(w, "timeout exceeded", http.StatusGatewayTimeout)
 			return
 		}
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	err = json.NewEncoder(w).Encode(RefreshResponse{AccessToken: accessToken, RefreshToken: refreshToken})
+	if refreshed.Replayed {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(RefreshResponse{AccessToken: refreshed.AccessToken, RefreshToken: refreshed.RefreshToken})
 
 	if err != nil {
 		slog.Error("Refresh: failed encode response", "error", err)

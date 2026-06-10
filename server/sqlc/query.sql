@@ -27,7 +27,7 @@ WHERE username_key = $1;
 
 -- name: GetRefreshTokenForUpdate :one
 SELECT id, user_id, revoked, expires_at,
-  grace_period_until, replaced_by_access, replaced_by_refresh
+  grace_period_until, revoked_reason
 FROM refresh_tokens
 WHERE id = $1 AND user_id = $2
 FOR UPDATE;
@@ -39,21 +39,27 @@ INSERT INTO refresh_tokens (
   $1, $2, $3
 );
 
--- name: RotateRefreshToken :exec
+-- name: RotateRefreshToken :one
 UPDATE refresh_tokens
     SET revoked = true,
-    grace_period_until = $2,
-    replaced_by_access = $3,
-    replaced_by_refresh = $4
-WHERE id = $1;
+    revoked_at = now(),
+    revoked_reason = $1,
+    grace_period_until = $2
+WHERE id = $3 AND user_id = $4
+RETURNING id, revoked, revoked_reason, grace_period_until, revoked_at;
 
 -- name: RevokeRefreshToken :one
 UPDATE refresh_tokens
-    SET revoked = true
-WHERE id = $1 AND user_id = $2 AND revoked = false
+    SET revoked = true,
+    revoked_at = now(),
+    revoked_reason = $1
+WHERE id = $2 AND user_id = $3 AND revoked = false
 RETURNING id;
 
--- name: RevokeAllUserTokens :exec
+-- name: RevokeAllUserTokens :many
 UPDATE refresh_tokens
-    SET revoked = true
-WHERE user_id = $1 AND revoked = false
+    SET revoked = true,
+    revoked_at = now(),
+    revoked_reason = $1
+WHERE user_id = $2 AND revoked = false
+RETURNING id;
