@@ -43,8 +43,9 @@ func (s *AuthService) ValidateAccessToken(tokenStr string) (*jwt.RegisteredClaim
 
 var (
 	usernameRegex         = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,32}$`)
-	ErrorCreateUserFailed = errors.New("invalid credentials")
+	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrCompromisedToken   = errors.New("token was compromised")
+	dummyHash             = "$argon2id$v=19$m=65536,t=3,p=2$72aaaaK2bbDJWl0/X2o4EQ$Nu9PSnVbhaHuKb5iLb6JDAdQ5z+0spTUEAO7tqBVvHA"
 )
 
 func (s *AuthService) Signup(ctx context.Context, uername, displayName, password string) (*db.CreateUserRow, error) {
@@ -53,11 +54,11 @@ func (s *AuthService) Signup(ctx context.Context, uername, displayName, password
 	udisplay := normDisplay(displayName)
 
 	if err := validateUsernameKey(ukey); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrorCreateUserFailed, err.Error())
+		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, err.Error())
 	}
 
 	if err := validatePassword(p, []string{ukey, udisplay}); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrorCreateUserFailed, err.Error())
+		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, err.Error())
 	}
 
 	if udisplay == "" {
@@ -79,7 +80,7 @@ func (s *AuthService) Signup(ctx context.Context, uername, displayName, password
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
-		return nil, ErrorCreateUserFailed
+		return nil, ErrInvalidCredentials
 	}
 
 	return &user, nil
@@ -89,8 +90,16 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 	p := norm.NFC.String(password)
 	ukey := normKey(username)
 
+	if err := validatePasswordLength(p); err != nil {
+		return "", "", err
+	}
+
 	uPrivate, err := s.store.Queries.GetFullUserDataByKey(ctx, ukey)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			_ = compareHashAndPassword(dummyHash, []byte(p))
+			return "", "", ErrInvalidCredentials
+		}
 		return "", "", err
 	}
 
@@ -269,16 +278,8 @@ func normKey(s string) string {
 }
 
 func validatePassword(p string, userInputs []string) error {
-	l := utf8.RuneCountInString(p)
-
-	// NIST, SP 800-63B for single-factor authentication:
-	// - minimum of 15 characters in length
-	if l < 15 {
-		return errors.New("password must be at least 15 characters")
-	}
-	// - maximum at least 64
-	if l > 128 {
-		return errors.New("password too long")
+	if err := validatePasswordLength(p); err != nil {
+		return err
 	}
 
 	for _, r := range p {
@@ -294,6 +295,22 @@ func validatePassword(p string, userInputs []string) error {
 	}
 
 	// @TODO: compare password against breach/common-password blocklist
+
+	return nil
+}
+
+func validatePasswordLength(p string) error {
+	l := utf8.RuneCountInString(p)
+
+	// NIST, SP 800-63B for single-factor authentication:
+	// - minimum of 15 characters in length
+	if l < 15 {
+		return errors.New("password must be at least 15 characters")
+	}
+	// - maximum at least 64
+	if l > 128 {
+		return errors.New("password too long")
+	}
 
 	return nil
 }

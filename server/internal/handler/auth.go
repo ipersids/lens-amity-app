@@ -57,7 +57,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	user, err := h.authService.Signup(ctx, req.Username, req.DisplayName, req.Password)
 
 	if err != nil {
-		if errors.Is(err, core.ErrorCreateUserFailed) {
+		if errors.Is(err, core.ErrInvalidCredentials) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
