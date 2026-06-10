@@ -54,12 +54,6 @@ func (s *AuthService) Signup(ctx context.Context, uername, displayName, password
 	ukey := normKey(uername)
 	udisplay := normDisplay(displayName)
 
-	udisplayLen := utf8.RuneCountInString(udisplay)
-
-	if 3 < udisplayLen || udisplayLen > 33 {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, "display name too long")
-	}
-
 	if err := validateUsernameKey(ukey); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, err.Error())
 	}
@@ -70,6 +64,10 @@ func (s *AuthService) Signup(ctx context.Context, uername, displayName, password
 
 	if udisplay == "" {
 		udisplay = normDisplay(uername)
+	}
+
+	if err := validateNameLength(udisplay); err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, err.Error())
 	}
 
 	hash, err := generateFromPassword([]byte(p))
@@ -251,7 +249,11 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 		return err
 	}
 
-	_, err = s.store.Queries.RevokeRefreshToken(ctx, db.RevokeRefreshTokenParams{ID: tokenID, UserID: userID})
+	_, err = s.store.Queries.RevokeRefreshToken(ctx, db.RevokeRefreshTokenParams{
+		RevokedReason: db.NullTokenRevokedReason{TokenRevokedReason: db.TokenRevokedReasonLogout, Valid: true},
+		ID:            tokenID,
+		UserID:        userID,
+	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
@@ -317,6 +319,20 @@ func validatePasswordLength(p string) error {
 	// - maximum at least 64
 	if l > 128 {
 		return errors.New("password too long")
+	}
+
+	return nil
+}
+
+func validateNameLength(name string) error {
+	l := utf8.RuneCountInString(name)
+
+	if l < 3 {
+		return errors.New("display name is too short")
+	}
+
+	if l > 32 {
+		return errors.New("display name is too long")
 	}
 
 	return nil

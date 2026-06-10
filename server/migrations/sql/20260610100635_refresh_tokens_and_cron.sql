@@ -29,6 +29,7 @@ SELECT cron.schedule(
 );
 
 -- +goose Down
-DROP TABLE refresh_tokens;
 SELECT cron.unschedule('vacuum_refresh_tokens');
 SELECT cron.unschedule('delete-job-run-details');
+DROP TABLE refresh_tokens;
+DROP TYPE token_revoked_reason;
