@@ -45,13 +45,20 @@ var (
 	usernameRegex         = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,32}$`)
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrCompromisedToken   = errors.New("token was compromised")
-	dummyHash             = "$argon2id$v=19$m=65536,t=3,p=2$72aaaaK2bbDJWl0/X2o4EQ$Nu9PSnVbhaHuKb5iLb6JDAdQ5z+0spTUEAO7tqBVvHA"
 )
+
+const dummyHash = "$argon2id$v=19$m=65536,t=3,p=2$72aaaaK2bbDJWl0/X2o4EQ$Nu9PSnVbhaHuKb5iLb6JDAdQ5z+0spTUEAO7tqBVvHA"
 
 func (s *AuthService) Signup(ctx context.Context, uername, displayName, password string) (*db.CreateUserRow, error) {
 	p := norm.NFC.String(password)
 	ukey := normKey(uername)
 	udisplay := normDisplay(displayName)
+
+	udisplayLen := utf8.RuneCountInString(udisplay)
+
+	if 3 < udisplayLen || udisplayLen > 33 {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, "display name too long")
+	}
 
 	if err := validateUsernameKey(ukey); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, err.Error())
