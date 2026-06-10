@@ -56,4 +56,4 @@ RETURNING id;
 -- name: RevokeAllUserTokens :exec
 UPDATE refresh_tokens
     SET revoked = true
-WHERE user_id = $1 AND revoked = false;
+WHERE user_id = $1 AND revoked = false

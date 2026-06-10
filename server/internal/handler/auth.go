@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"lensamity/internal/core"
+	"lensamity/internal/middleware"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type AuthHandler struct {
@@ -189,6 +192,26 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	err := h.authService.Logout(ctx, req.RefreshToken)
+	if err != nil {
+		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	err := h.authService.LogoutAll(ctx, userID)
 	if err != nil {
 		http.Error(w, "something went wrong", http.StatusInternalServerError)
 		return

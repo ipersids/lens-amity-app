@@ -232,6 +232,14 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 	return nil
 }
 
+func (s *AuthService) LogoutAll(ctx context.Context, userID uuid.UUID) error {
+	err := s.store.Queries.RevokeAllUserTokens(ctx, userID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	return nil
+}
+
 // ------------------------------ PRIVATE HELPERS ------------------------------
 
 func normDisplay(s string) string {
