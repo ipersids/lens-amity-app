@@ -43,9 +43,11 @@ func (s *AuthService) ValidateAccessToken(tokenStr string) (*jwt.RegisteredClaim
 
 var (
 	usernameRegex         = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,32}$`)
-	ErrorCreateUserFailed = errors.New("invalid credentials")
+	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrCompromisedToken   = errors.New("token was compromised")
 )
+
+const dummyHash = "$argon2id$v=19$m=65536,t=3,p=2$72aaaaK2bbDJWl0/X2o4EQ$Nu9PSnVbhaHuKb5iLb6JDAdQ5z+0spTUEAO7tqBVvHA"
 
 func (s *AuthService) Signup(ctx context.Context, uername, displayName, password string) (*db.CreateUserRow, error) {
 	p := norm.NFC.String(password)
@@ -53,15 +55,19 @@ func (s *AuthService) Signup(ctx context.Context, uername, displayName, password
 	udisplay := normDisplay(displayName)
 
 	if err := validateUsernameKey(ukey); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrorCreateUserFailed, err.Error())
+		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, err.Error())
 	}
 
 	if err := validatePassword(p, []string{ukey, udisplay}); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrorCreateUserFailed, err.Error())
+		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, err.Error())
 	}
 
 	if udisplay == "" {
 		udisplay = normDisplay(uername)
+	}
+
+	if err := validateNameLength(udisplay); err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, err.Error())
 	}
 
 	hash, err := generateFromPassword([]byte(p))
@@ -79,7 +85,7 @@ func (s *AuthService) Signup(ctx context.Context, uername, displayName, password
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
-		return nil, ErrorCreateUserFailed
+		return nil, ErrInvalidCredentials
 	}
 
 	return &user, nil
@@ -89,8 +95,16 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 	p := norm.NFC.String(password)
 	ukey := normKey(username)
 
+	if err := validatePasswordLength(p); err != nil {
+		return "", "", err
+	}
+
 	uPrivate, err := s.store.Queries.GetFullUserDataByKey(ctx, ukey)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			_ = compareHashAndPassword(dummyHash, []byte(p))
+			return "", "", ErrInvalidCredentials
+		}
 		return "", "", err
 	}
 
@@ -121,73 +135,80 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 	return token, refreshTokenData.token, nil
 }
 
-func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string, string, error) {
+type RefreshResult struct {
+	AccessToken  string
+	RefreshToken string
+	Replayed     bool
+}
+
+func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*RefreshResult, error) {
 	claims, err := validateToken(refreshToken, s.conf.RefreshSecret)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	userID, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	now := time.Now().Truncate(time.Second)
 
 	tokenID, err := uuid.Parse(claims.ID)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	tx, err := s.store.Pool.Begin(ctx)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
 	rtoken, err := s.store.Queries.WithTx(tx).GetRefreshTokenForUpdate(ctx, db.GetRefreshTokenForUpdateParams{ID: tokenID, UserID: userID})
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	if rtoken.Revoked {
-		if !rtoken.ReplacedByAccess.Valid || !rtoken.ReplacedByRefresh.Valid {
-			return "", "", ErrInvalidToken
-		}
 		if rtoken.GracePeriodUntil.Valid && time.Now().Before(rtoken.GracePeriodUntil.Time) {
-			return rtoken.ReplacedByAccess.String, rtoken.ReplacedByRefresh.String, nil
+			return &RefreshResult{
+				Replayed:     true,
+				AccessToken:  "",
+				RefreshToken: "",
+			}, nil
 		}
 		// enable reuse detection
-		if err := s.store.Queries.WithTx(tx).RevokeAllUserTokens(ctx, userID); err != nil {
-			slog.Error("1. Refresh service: failed remove compromised user tokens", "userID", userID.String())
-			return "", "", fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
+		if _, err := s.store.Queries.WithTx(tx).RevokeAllUserTokens(ctx, db.RevokeAllUserTokensParams{
+			UserID:        userID,
+			RevokedReason: db.NullTokenRevokedReason{TokenRevokedReason: db.TokenRevokedReasonReplayed, Valid: true},
+		}); err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
 		}
 		if err := tx.Commit(ctx); err != nil {
-			slog.Error("2. Refresh service: failed remove compromised user tokens", "userID", userID.String())
-			return "", "", fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
+			return nil, fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
 		}
-		slog.Error("Refresh service: DATA BREACH DETECTED", "userID", userID.String())
-		return "", "", ErrCompromisedToken
+		return nil, ErrCompromisedToken
 	}
 
 	accessToken, err := s.signAccessToken(ctx, userID, now)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	refreshTokenData, err := s.signRefreshToken(ctx, userID, now)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
-	err = s.store.Queries.WithTx(tx).RotateRefreshToken(ctx, db.RotateRefreshTokenParams{
-		ID:                rtoken.ID,
-		GracePeriodUntil:  pgtype.Timestamptz{Time: now.Add(3 * time.Second), Valid: true},
-		ReplacedByAccess:  pgtype.Text{String: accessToken, Valid: true},
-		ReplacedByRefresh: pgtype.Text{String: refreshTokenData.token, Valid: true},
+	_, err = s.store.Queries.WithTx(tx).RotateRefreshToken(ctx, db.RotateRefreshTokenParams{
+		ID:               tokenID,
+		UserID:           userID,
+		GracePeriodUntil: pgtype.Timestamptz{Time: now.Add(3 * time.Second), Valid: true},
+		RevokedReason:    db.NullTokenRevokedReason{TokenRevokedReason: db.TokenRevokedReasonRefresh, Valid: true},
 	})
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	err = s.store.Queries.WithTx(tx).CreateNewRefreshToken(ctx, db.CreateNewRefreshTokenParams{
@@ -196,14 +217,18 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string,
 		ExpiresAt: refreshTokenData.claims.ExpiresAt.Time,
 	})
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return "", "", err
+		return nil, err
 	}
 
-	return accessToken, refreshTokenData.token, nil
+	return &RefreshResult{
+		Replayed:     false,
+		AccessToken:  accessToken,
+		RefreshToken: refreshTokenData.token,
+	}, nil
 }
 
 func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
@@ -224,7 +249,11 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 		return err
 	}
 
-	_, err = s.store.Queries.RevokeRefreshToken(ctx, db.RevokeRefreshTokenParams{ID: tokenID, UserID: userID})
+	_, err = s.store.Queries.RevokeRefreshToken(ctx, db.RevokeRefreshTokenParams{
+		RevokedReason: db.NullTokenRevokedReason{TokenRevokedReason: db.TokenRevokedReasonLogout, Valid: true},
+		ID:            tokenID,
+		UserID:        userID,
+	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
@@ -233,7 +262,10 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 }
 
 func (s *AuthService) LogoutAll(ctx context.Context, userID uuid.UUID) error {
-	err := s.store.Queries.RevokeAllUserTokens(ctx, userID)
+	_, err := s.store.Queries.RevokeAllUserTokens(ctx, db.RevokeAllUserTokensParams{
+		UserID:        userID,
+		RevokedReason: db.NullTokenRevokedReason{TokenRevokedReason: db.TokenRevokedReasonLogout, Valid: true},
+	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
@@ -255,16 +287,8 @@ func normKey(s string) string {
 }
 
 func validatePassword(p string, userInputs []string) error {
-	l := utf8.RuneCountInString(p)
-
-	// NIST, SP 800-63B for single-factor authentication:
-	// - minimum of 15 characters in length
-	if l < 15 {
-		return errors.New("password must be at least 15 characters")
-	}
-	// - maximum at least 64
-	if l > 128 {
-		return errors.New("password too long")
+	if err := validatePasswordLength(p); err != nil {
+		return err
 	}
 
 	for _, r := range p {
@@ -280,6 +304,36 @@ func validatePassword(p string, userInputs []string) error {
 	}
 
 	// @TODO: compare password against breach/common-password blocklist
+
+	return nil
+}
+
+func validatePasswordLength(p string) error {
+	l := utf8.RuneCountInString(p)
+
+	// NIST, SP 800-63B for single-factor authentication:
+	// - minimum of 15 characters in length
+	if l < 15 {
+		return errors.New("password must be at least 15 characters")
+	}
+	// - maximum at least 64
+	if l > 128 {
+		return errors.New("password too long")
+	}
+
+	return nil
+}
+
+func validateNameLength(name string) error {
+	l := utf8.RuneCountInString(name)
+
+	if l < 3 {
+		return errors.New("display name is too short")
+	}
+
+	if l > 32 {
+		return errors.New("display name is too long")
+	}
 
 	return nil
 }

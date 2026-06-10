@@ -23,6 +23,8 @@ func NewAuthHandler(authService *core.AuthService) *AuthHandler {
 	}
 }
 
+const maxAuthBodyBytes = 8 * 1024 // 8 KiB
+
 type SignupRequest struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
@@ -35,6 +37,8 @@ type SignupResponse struct {
 }
 
 func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
+
 	var req SignupRequest
 
 	decoder := json.NewDecoder(r.Body)
@@ -57,7 +61,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	user, err := h.authService.Signup(ctx, req.Username, req.DisplayName, req.Password)
 
 	if err != nil {
-		if errors.Is(err, core.ErrorCreateUserFailed) {
+		if errors.Is(err, core.ErrInvalidCredentials) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -84,6 +88,8 @@ type LoginResponse struct {
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
+
 	var req LoginRequest
 
 	decoder := json.NewDecoder(r.Body)
@@ -131,6 +137,8 @@ type RefreshResponse struct {
 }
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
+
 	var req RefreshRequest
 
 	decoder := json.NewDecoder(r.Body)
@@ -150,17 +158,22 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	accessToken, refreshToken, err := h.authService.Refresh(ctx, req.RefreshToken)
+	refreshed, err := h.authService.Refresh(ctx, req.RefreshToken)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			http.Error(w, "Database timeout exceeded", http.StatusGatewayTimeout)
+			http.Error(w, "timeout exceeded", http.StatusGatewayTimeout)
 			return
 		}
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	err = json.NewEncoder(w).Encode(RefreshResponse{AccessToken: accessToken, RefreshToken: refreshToken})
+	if refreshed.Replayed {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(RefreshResponse{AccessToken: refreshed.AccessToken, RefreshToken: refreshed.RefreshToken})
 
 	if err != nil {
 		slog.Error("Refresh: failed encode response", "error", err)
@@ -172,6 +185,8 @@ type LogoutRequest struct {
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
+
 	var req RefreshRequest
 
 	decoder := json.NewDecoder(r.Body)
@@ -201,6 +216,8 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
+
 	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)

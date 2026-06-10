@@ -164,3 +164,15 @@ func TestCompareHashAndPassword(t *testing.T) {
 		})
 	}
 }
+
+func TestDummyHashIsValid(t *testing.T) {
+	h, err := parseHash(dummyHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = h.Params.isValid()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
