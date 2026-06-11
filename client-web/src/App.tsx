@@ -1,11 +1,11 @@
 import { Route, Routes } from "react-router";
-import Header from "./components/Header";
+import Layout from "./components/Layout";
 
 function App() {
   return (
-    <div className="flex flex-col h-screen w-full max-w-6xl">
+    <div className="app">
       <Routes>
-        <Route element={<Header />}>
+        <Route element={<Layout />}>
           <Route path="/" element={<p>APP</p>} />
           <Route path="/login" element={<p>LOGIN</p>} />
           <Route path="/signup" element={<p>SIGNUP</p>} />

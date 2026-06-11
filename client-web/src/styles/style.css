@@ -1,0 +1,19 @@
+header {
+  margin: 10px;
+  display: flex;
+  gap: 20px;
+}
+
+main {
+  margin: 10px;
+}
+
+footer {
+  margin: 10px;
+  text-align: center;
+}
+
+.layout {
+  display: flex;
+  flex-flow: column wrap;
+}
