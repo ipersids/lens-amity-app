@@ -27,13 +27,13 @@ const maxAuthBodyBytes = 8 * 1024 // 8 KiB
 
 type SignupRequest struct {
 	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
+	DisplayName string `json:"displayName"`
 	Password    string `json:"password"`
 }
 
 type SignupResponse struct {
 	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
+	DisplayName string `json:"displayName"`
 }
 
 func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
@@ -83,8 +83,8 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -128,12 +128,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refreshToken"`
 }
 
 type RefreshResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
 }
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +181,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 type LogoutRequest struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refreshToken"`
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
