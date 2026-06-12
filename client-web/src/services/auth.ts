@@ -3,10 +3,19 @@ import { authApi, internalApi } from "./api";
 // export type AuthResponse = SignupResponse | LoginResponse | RefreshResponse;
 const baseAuthURI = "/api/auth";
 
-type SignupItem = {
+export type SignupItem = {
   username: string;
   displayName?: string;
   password: string;
+};
+
+export type LoginItem = {
+  username: string;
+  password: string;
+};
+
+export type LogoutItem = {
+  refreshToken: string;
 };
 
 type SignupResponse = {
@@ -14,18 +23,11 @@ type SignupResponse = {
   displayName: string;
 };
 
-type LoginItem = {
-  username: string;
-  password: string;
-};
-
 type LoginResponse = {
   accessToken: string;
   refreshToken: string;
-};
-
-type LogoutItem = {
-  refreshToken: string;
+  username: string;
+  displayName: string;
 };
 
 const signup = async (credentials: SignupItem): Promise<SignupResponse> => {
@@ -45,8 +47,8 @@ const logout = async (credentials: LogoutItem) => {
   await internalApi.post<void>(`${baseAuthURI}/logout`, { ...credentials });
 };
 
-const logoutAll = async (credentials: LogoutItem) => {
-  await internalApi.post<void>(`${baseAuthURI}/logout-all`, { ...credentials });
+const logoutAll = async () => {
+  await internalApi.post<void>(`${baseAuthURI}/logout-all`);
 };
 
 const authService = { signup, login, logout, logoutAll };

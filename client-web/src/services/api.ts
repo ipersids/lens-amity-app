@@ -112,9 +112,24 @@ internalApi.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      const { data } = await internalApi.post<RefreshResponse>("/api/auth/refresh", {
+      const response = await internalApi.post<RefreshResponse>("/api/auth/refresh", {
         refreshToken: tokenService.get(TokenKey.Refresh),
       });
+
+      if (response.status === 201) {
+        const accessToken = tokenService.get(TokenKey.Access);
+
+        if (!accessToken) {
+          throw new Error("Refresh already handled, but no access token is stored");
+        }
+
+        originalConfig.headers.Authorization = `Bearer ${accessToken}`;
+        processFailedQueue(null, accessToken);
+
+        return internalApi(originalConfig);
+      }
+
+      const { data } = response;
 
       tokenService.set(TokenKey.Access, data.accessToken);
       tokenService.set(TokenKey.Refresh, data.refreshToken);
@@ -132,3 +147,32 @@ internalApi.interceptors.response.use(
     }
   },
 );
+
+// Helper function for extracting error message
+
+export const getApiErrorMessage = (
+  error: unknown,
+  fallback: string = "Ooops, something went wrong",
+): string => {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data;
+
+    if (data && typeof data === "string") {
+      return data;
+    }
+
+    if (data && typeof data === "object" && "message" in data && typeof data.message === "string") {
+      return data.message;
+    }
+
+    if (error.response?.status === 401) {
+      return "Oh, this session has already expired. Login again to continue.";
+    }
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return fallback;
+};
