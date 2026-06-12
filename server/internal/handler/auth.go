@@ -85,6 +85,8 @@ type LoginRequest struct {
 type LoginResponse struct {
 	AccessToken  string `json:"accessToken"`
 	RefreshToken string `json:"refreshToken"`
+	Username     string `json:"username"`
+	DisplayName  string `json:"displayName"`
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +111,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	token, refreshToken, err := h.authService.Login(ctx, req.Username, req.Password)
+	user, err := h.authService.Login(ctx, req.Username, req.Password)
 	if err != nil {
 		slog.Error("Login request failed", "error", err)
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -120,7 +122,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = json.NewEncoder(w).Encode(LoginResponse{AccessToken: token, RefreshToken: refreshToken})
+	err = json.NewEncoder(w).Encode(LoginResponse{
+		AccessToken:  user.AccessToken,
+		RefreshToken: user.RefreshToken,
+		Username:     user.Username,
+		DisplayName:  user.DisplayName,
+	})
 
 	if err != nil {
 		slog.Error("Login: failed encode response", "error", err)

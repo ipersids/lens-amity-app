@@ -91,36 +91,43 @@ func (s *AuthService) Signup(ctx context.Context, uername, displayName, password
 	return &user, nil
 }
 
-func (s *AuthService) Login(ctx context.Context, username, password string) (string, string, error) {
+type LoginResult struct {
+	AccessToken  string
+	RefreshToken string
+	Username     string
+	DisplayName  string
+}
+
+func (s *AuthService) Login(ctx context.Context, username, password string) (*LoginResult, error) {
 	p := norm.NFC.String(password)
 	ukey := normKey(username)
 
 	if err := validatePasswordLength(p); err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	uPrivate, err := s.store.Queries.GetFullUserDataByKey(ctx, ukey)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			_ = compareHashAndPassword(dummyHash, []byte(p))
-			return "", "", ErrInvalidCredentials
+			return nil, ErrInvalidCredentials
 		}
-		return "", "", err
+		return nil, err
 	}
 
 	if err := compareHashAndPassword(uPrivate.PasswordHash, []byte(p)); err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	nowUTC := time.Now().UTC()
 
 	token, err := s.signAccessToken(ctx, uPrivate.ID, nowUTC)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 	refreshTokenData, err := s.signRefreshToken(ctx, uPrivate.ID, nowUTC)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	err = s.store.Queries.CreateNewRefreshToken(ctx, db.CreateNewRefreshTokenParams{
@@ -129,10 +136,15 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 		ExpiresAt: refreshTokenData.claims.ExpiresAt.Time,
 	})
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
-	return token, refreshTokenData.token, nil
+	return &LoginResult{
+		AccessToken:  token,
+		RefreshToken: refreshTokenData.token,
+		Username:     uPrivate.UsernameKey,
+		DisplayName:  uPrivate.UsernameDisplay,
+	}, nil
 }
 
 type RefreshResult struct {
