@@ -17,6 +17,18 @@ const remove = (key: TokenKey) => {
   localStorage.removeItem(key);
 };
 
-const tokenService = { get, set, remove };
+const reset = () => {
+  localStorage.removeItem(TokenKey.Access);
+  localStorage.removeItem(TokenKey.Refresh);
+};
+
+const hasAuthTokens = (): boolean => {
+  return (
+    localStorage.getItem(TokenKey.Access) !== null &&
+    localStorage.getItem(TokenKey.Refresh) !== null
+  );
+};
+
+const tokenService = { get, set, remove, reset, hasAuthTokens };
 
 export default tokenService;

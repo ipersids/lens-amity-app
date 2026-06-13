@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { getApiErrorMessage } from "../services/api";
 import type { LoginItem, SignupItem } from "../services/auth";
 import authService from "../services/auth";
@@ -14,104 +15,136 @@ interface AuthActions {
   login: (input: LoginItem) => Promise<void>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
+  syncSession: () => void;
 }
 
 interface AuthState {
   user: CurrentUser | null;
-  accessToken: string | null;
   isLoading: boolean;
-  error: string | null;
   actions: AuthActions;
 }
 
-const useAuthStore = create<AuthState>((set, get) => ({
-  user: null,
-  accessToken: null,
-  isLoading: false,
-  error: null,
-  actions: {
-    signup: async (input) => {
-      if (get().user) return;
+const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      isLoading: false,
 
-      set(() => ({ isLoading: true, error: null }));
+      actions: {
+        signup: async (input) => {
+          if (get().user || get().isLoading) return;
 
-      try {
-        await authService.signup({ ...input });
-      } catch (err: unknown) {
-        set(() => ({ error: getApiErrorMessage(err) }));
-      } finally {
-        set(() => ({ isLoading: false }));
-      }
+          set(() => ({ isLoading: true }));
+
+          try {
+            await authService.signup({ ...input });
+          } catch (err: unknown) {
+            throw new Error(getApiErrorMessage(err));
+          } finally {
+            set(() => ({ isLoading: false }));
+          }
+        },
+
+        login: async (input) => {
+          if (get().user || get().isLoading) return;
+
+          set(() => ({ isLoading: true }));
+
+          try {
+            const data = await authService.login({ ...input });
+
+            tokenService.set(TokenKey.Access, data.accessToken);
+            tokenService.set(TokenKey.Refresh, data.refreshToken);
+
+            set(() => ({
+              user: {
+                username: data.username,
+                displayName: data.displayName,
+              },
+            }));
+          } catch (err: unknown) {
+            throw new Error(getApiErrorMessage(err));
+          } finally {
+            set(() => ({ isLoading: false }));
+          }
+        },
+
+        logout: async () => {
+          if (!get().user || get().isLoading) return;
+
+          set(() => ({ isLoading: true }));
+
+          try {
+            const refreshToken = tokenService.get(TokenKey.Refresh);
+
+            if (refreshToken) {
+              await authService.logout({ refreshToken });
+            }
+          } finally {
+            set(() => ({
+              user: null,
+              isLoading: false,
+            }));
+
+            tokenService.reset();
+          }
+        },
+
+        logoutAll: async () => {
+          if (!get().user || get().isLoading) return;
+
+          set(() => ({ isLoading: true }));
+
+          try {
+            await authService.logoutAll();
+          } catch (err: unknown) {
+            throw new Error(getApiErrorMessage(err));
+          } finally {
+            set(() => ({
+              user: null,
+              isLoading: false,
+            }));
+
+            tokenService.reset();
+          }
+        },
+        syncSession: () => {
+          if (!tokenService.hasAuthTokens()) {
+            set(() => ({ user: null }));
+          }
+        },
+      },
+    }),
+    {
+      name: "auth-storage",
+      partialize: (state) => ({
+        user: state.user,
+      }),
     },
+  ),
+);
 
-    login: async (input) => {
-      if (get().user) return;
+export const useUser = () => useAuthStore((state) => state.user);
 
-      set(() => ({ isLoading: true, error: null }));
+export const useSyncSession = () => useAuthStore((state) => state.actions.syncSession);
 
-      try {
-        const data = await authService.login({ ...input });
-
-        set(() => ({
-          user: { username: data.username, displayName: data.displayName },
-          accessToken: data.accessToken,
-        }));
-
-        tokenService.set(TokenKey.Access, data.accessToken);
-        tokenService.set(TokenKey.Refresh, data.refreshToken);
-      } catch (err: unknown) {
-        set(() => ({ error: getApiErrorMessage(err) }));
-      } finally {
-        set(() => ({ isLoading: false }));
-      }
-    },
-
-    logout: async () => {
-      if (!get().user) return;
-
-      set(() => ({ isLoading: true, error: null }));
-
-      try {
-        const refreshToken = tokenService.get(TokenKey.Refresh);
-
-        if (refreshToken) {
-          await authService.logout({ refreshToken });
-        }
-      } catch (err: unknown) {
-        set(() => ({ error: getApiErrorMessage(err) }));
-      } finally {
-        tokenService.remove(TokenKey.Access);
-        tokenService.remove(TokenKey.Refresh);
-
-        set(() => ({
-          user: null,
-          accessToken: null,
-          isLoading: false,
-        }));
-      }
-    },
-
-    logoutAll: async () => {
-      if (!get().user) return;
-
-      set(() => ({ isLoading: true, error: null }));
-
-      try {
-        await authService.logoutAll();
-      } catch (err: unknown) {
-        set(() => ({ error: getApiErrorMessage(err) }));
-      } finally {
-        tokenService.remove(TokenKey.Access);
-        tokenService.remove(TokenKey.Refresh);
-
-        set(() => ({
-          user: null,
-          accessToken: null,
-          isLoading: false,
-        }));
-      }
-    },
-  },
-}));
-
-export default useAuthStore;
+export const useSignup = () =>
+  useAuthStore((state) => ({
+    signup: state.actions.signup,
+    isLoading: state.isLoading,
+  }));
+export const useLogin = () =>
+  useAuthStore((state) => ({
+    login: state.actions.login,
+    isLoading: state.isLoading,
+  }));
+export const useLogout = () =>
+  useAuthStore((state) => ({
+    logout: state.actions.logout,
+    isLoading: state.isLoading,
+  }));
+export const useLogoutAll = () =>
+  useAuthStore((state) => ({
+    logoutAll: state.actions.logoutAll,
+    isLoading: state.isLoading,
+  }));
