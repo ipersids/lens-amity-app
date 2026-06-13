@@ -125,26 +125,9 @@ const useAuthStore = create<AuthState>()(
 );
 
 export const useUser = () => useAuthStore((state) => state.user);
-
+export const useLoading = () => useAuthStore((state) => state.isLoading);
 export const useSyncSession = () => useAuthStore((state) => state.actions.syncSession);
-
-export const useSignup = () =>
-  useAuthStore((state) => ({
-    signup: state.actions.signup,
-    isLoading: state.isLoading,
-  }));
-export const useLogin = () =>
-  useAuthStore((state) => ({
-    login: state.actions.login,
-    isLoading: state.isLoading,
-  }));
-export const useLogout = () =>
-  useAuthStore((state) => ({
-    logout: state.actions.logout,
-    isLoading: state.isLoading,
-  }));
-export const useLogoutAll = () =>
-  useAuthStore((state) => ({
-    logoutAll: state.actions.logoutAll,
-    isLoading: state.isLoading,
-  }));
+export const useSignup = () => useAuthStore((state) => state.actions.signup);
+export const useLogin = () => useAuthStore((state) => state.actions.login);
+export const useLogout = () => useAuthStore((state) => state.actions.logout);
+export const useLogoutAll = () => useAuthStore((state) => state.actions.logoutAll);
