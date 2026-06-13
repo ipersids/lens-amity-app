@@ -1,14 +1,23 @@
+import { useEffect } from "react";
 import { Route, Routes } from "react-router";
-import Header from "./components/Header";
+import Layout from "./features/Layout";
+import AuthPage from "./pages/AuthPage";
+import { useSyncSession } from "./stores/auth";
 
 function App() {
+  const syncSession = useSyncSession();
+
+  useEffect(() => {
+    syncSession();
+  }, [syncSession]);
+
   return (
-    <div className="flex flex-col h-screen w-full max-w-6xl">
+    <div className="app">
       <Routes>
-        <Route element={<Header />}>
+        <Route element={<Layout />}>
           <Route path="/" element={<p>APP</p>} />
-          <Route path="/login" element={<p>LOGIN</p>} />
-          <Route path="/signup" element={<p>SIGNUP</p>} />
+          <Route path="/login" element={<AuthPage mode="login" />} />
+          <Route path="/signup" element={<AuthPage mode="signup" />} />
         </Route>
       </Routes>
     </div>
