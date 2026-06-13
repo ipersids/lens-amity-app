@@ -1,5 +1,5 @@
 import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from "axios";
-import axios from "axios";
+import axios, { isAxiosError } from "axios";
 import tokenService, { TokenKey } from "./token";
 
 export type ApiError = {
@@ -84,6 +84,7 @@ internalApi.interceptors.request.use((config) => {
   return config;
 });
 
+// silently refresh token is access token expired and retry the failed request
 internalApi.interceptors.response.use(
   (response: AxiosResponse) => response,
   async (error: unknown) => {
@@ -96,10 +97,17 @@ internalApi.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (error?.status === 401 && originalConfig._isRetry) {
+    if (error.status !== 401) {
       return Promise.reject(error);
     }
 
+    // error is 401 Unauthorized and retry failed
+    if (originalConfig._isRetry) {
+      tokenService.reset();
+      return Promise.reject(error);
+    }
+
+    // add to thew queue if other request already requested refresh token
     if (isRefreshing) {
       const token = await new Promise<string>((resolve, reject) => {
         failedQueue.push({ resolve, reject });
@@ -108,18 +116,22 @@ internalApi.interceptors.response.use(
       return internalApi(originalConfig);
     }
 
+    // mark requeast status as retrying and update global resreshing state
     originalConfig._isRetry = true;
     isRefreshing = true;
 
     try {
-      const response = await internalApi.post<RefreshResponse>("/api/auth/refresh", {
+      // reuest a new access token
+      const response = await authApi.post<RefreshResponse>("/api/auth/refresh", {
         refreshToken: tokenService.get(TokenKey.Refresh),
       });
 
-      if (response.status === 201) {
+      // handle grace period case (204 No Content)
+      if (response.status === 204) {
         const accessToken = tokenService.get(TokenKey.Access);
 
         if (!accessToken) {
+          tokenService.reset();
           throw new Error("Refresh already handled, but no access token is stored");
         }
 
@@ -140,10 +152,13 @@ internalApi.interceptors.response.use(
 
       return internalApi(originalConfig);
     } catch (error: unknown) {
+      if (isAxiosError(error) && (error?.status === 401 || error?.status === 400)) {
+        tokenService.reset();
+      }
       processFailedQueue(error);
       return Promise.reject(error);
     } finally {
-      isRefreshing = true;
+      isRefreshing = false;
     }
   },
 );
