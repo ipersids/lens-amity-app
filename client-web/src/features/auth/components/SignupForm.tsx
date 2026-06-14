@@ -36,19 +36,20 @@ const SignupForm = () => {
   };
 
   return (
-    <form className="auth-form" onSubmit={handleSubmit}>
-      <label>
-        Username
+    <form id="signup" name="signup" className="auth-form" onSubmit={handleSubmit}>
+      <section className="auth-form-field">
+        <label htmlFor="username">{"Username"}</label>
         <input
-          autoComplete="username"
-          disabled={isLoading}
+          id="username"
           name="username"
-          onChange={(event) => setUsername(event.target.value)}
-          required
+          autoComplete="username"
           type="text"
           value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          disabled={isLoading}
+          required
         />
-      </label>
+      </section>
 
       <PasswordField
         autoComplete="new-password"

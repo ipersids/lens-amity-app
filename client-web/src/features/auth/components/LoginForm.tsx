@@ -1,7 +1,7 @@
-import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { type SubmitEventHandler, useState } from "react";
 import { useNavigate } from "react-router";
 import { useLoading, useLogin } from "../../../stores/auth";
+import PasswordField from "./PasswordField";
 
 const LoginForm = () => {
   const login = useLogin();
@@ -11,7 +11,6 @@ const LoginForm = () => {
   const [username, setUsername] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState<boolean>(false);
 
   const handleSubmit: SubmitEventHandler<HTMLFormElement> = async (event) => {
     event.preventDefault();
@@ -32,47 +31,34 @@ const LoginForm = () => {
   };
 
   return (
-    <form className="auth-form" onSubmit={handleSubmit}>
-      <label>
-        Username
+    <form id="login" name="login" className="auth-form" onSubmit={handleSubmit}>
+      <section className="auth-form-field">
+        <label htmlFor="username">{"Username"}</label>
         <input
-          autoComplete="username"
-          disabled={isLoading}
+          id="username"
           name="username"
-          onChange={(event) => setUsername(event.target.value)}
-          required
+          autoComplete="username"
           type="text"
           value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          disabled={isLoading}
+          required
         />
-      </label>
+      </section>
 
-      <label>
-        Password
-        <div className="password-field">
-          <input
-            autoComplete="current-password"
-            disabled={isLoading}
-            name="password"
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            type={showPassword ? "text" : "password"}
-            value={password}
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword((current) => !current)}
-            disabled={isLoading}
-            aria-label={showPassword ? "Hide password" : "Show password"}
-          >
-            {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
-          </button>
-        </div>
-      </label>
+      <PasswordField
+        autoComplete="current-password"
+        name="password"
+        onChange={(event) => setPassword(event.target.value)}
+        value={password}
+        disabled={isLoading}
+        label="Password"
+      />
 
       {error && <p className="auth-error">{error}</p>}
 
       <button disabled={isLoading} type="submit">
-        {isLoading ? "Making things done" : "Log in"}
+        {"Log In"}
       </button>
     </form>
   );

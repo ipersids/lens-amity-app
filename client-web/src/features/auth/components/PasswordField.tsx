@@ -24,7 +24,7 @@ const PasswordField = ({
   const Icon = isShown ? EyeSlashIcon : EyeIcon;
 
   return (
-    <section>
+    <>
       <section className="auth-form-field">
         <label htmlFor={autoComplete}>{label}</label>
         <input
@@ -47,7 +47,7 @@ const PasswordField = ({
         </button>
       </section>
       {error && <span>{error}</span>}
-    </section>
+    </>
   );
 };
 
