@@ -63,16 +63,19 @@ footer {
   opacity: 0.7;
 }
 
-.password-field {
+.auth-form-field {
   position: relative;
 }
 
-.password-field input {
-  padding-right: 40px;
-  margin-top: 4px;
+.auth-form-field label {
+  margin-bottom: 4px;
 }
 
-.password-field button {
+.auth-form-field input {
+  padding-right: 40px;
+}
+
+.auth-form-field button {
   position: absolute;
   inset: 40% 8px 0 auto;
   width: 28px;
@@ -82,7 +85,7 @@ footer {
   cursor: pointer;
 }
 
-.password-field svg {
+.auth-form-field svg {
   width: 20px;
 }
 

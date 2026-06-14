@@ -25,7 +25,7 @@ const PasswordField = ({
 
   return (
     <section>
-      <section className="password-field">
+      <section className="auth-form-field">
         <label htmlFor={autoComplete}>{label}</label>
         <input
           id={autoComplete}
