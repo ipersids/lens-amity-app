@@ -69,11 +69,12 @@ footer {
 
 .password-field input {
   padding-right: 40px;
+  margin-top: 4px;
 }
 
 .password-field button {
   position: absolute;
-  inset: 0 8px 0 auto;
+  inset: 40% 8px 0 auto;
   width: 28px;
   border: 0;
   background: none;
