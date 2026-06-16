@@ -2,6 +2,7 @@ import { type SubmitEventHandler, useState } from "react";
 import { useNavigate } from "react-router";
 import { useLoading, useSignup } from "../../../stores/auth";
 import PasswordField from "./PasswordField";
+import TextField from "./TextField";
 
 const SignupForm = () => {
   const signup = useSignup();
@@ -37,23 +38,22 @@ const SignupForm = () => {
 
   return (
     <form id="signup" name="signup" className="auth-form" onSubmit={handleSubmit}>
-      <section className="auth-form-field">
-        <label htmlFor="username">{"Username"}</label>
-        <input
-          id="username"
-          name="username"
-          autoComplete="username"
-          type="text"
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
-          disabled={isLoading}
-          required
-        />
-      </section>
+      <TextField
+        label={"Username"}
+        id="username"
+        name="username"
+        autoComplete="username"
+        type="text"
+        value={username}
+        onChange={(event) => setUsername(event.target.value)}
+        disabled={isLoading}
+        required
+      />
 
       <PasswordField
+        id="new-password"
         autoComplete="new-password"
-        name="password"
+        name="new-password"
         onChange={(event) => setPassword(event.target.value)}
         value={password}
         disabled={isLoading}
@@ -63,7 +63,7 @@ const SignupForm = () => {
       {error && <p className="auth-error">{error}</p>}
 
       <button disabled={isLoading} type="submit">
-        {"Sign Un"}
+        {"Create account"}
       </button>
     </form>
   );
