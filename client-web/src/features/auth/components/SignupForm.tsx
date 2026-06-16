@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { useLoading, useSignup } from "../../../stores/auth";
 import PasswordField from "./PasswordField";
 import TextField from "./TextField";
+import { validatePassword, validateUsername } from "../validation";
 
 const SignupForm = () => {
   const signup = useSignup();
@@ -36,6 +37,8 @@ const SignupForm = () => {
     }
   };
 
+  const passwordValidation = validatePassword(password, [username]);
+
   return (
     <form id="signup" name="signup" className="auth-form" onSubmit={handleSubmit}>
       <TextField
@@ -48,6 +51,7 @@ const SignupForm = () => {
         onChange={(event) => setUsername(event.target.value)}
         disabled={isLoading}
         required
+        error={validateUsername(username)}
       />
 
       <PasswordField
@@ -58,6 +62,8 @@ const SignupForm = () => {
         value={password}
         disabled={isLoading}
         label="New password"
+        strength={password ? passwordValidation.description : undefined}
+        error={password ? passwordValidation.feedback : undefined}
       />
 
       {error && <p className="auth-error">{error}</p>}

@@ -4,6 +4,7 @@ import { type ComponentPropsWithoutRef, useState } from "react";
 type PasswordFieldProps = Omit<ComponentPropsWithoutRef<"input">, "type"> & {
   label: string;
   error?: string;
+  strength?: string;
 };
 
 const PasswordField = ({
@@ -15,12 +16,13 @@ const PasswordField = ({
   name,
   minLength = 15,
   required = true,
+  strength,
   ...props
 }: PasswordFieldProps) => {
   const [isShown, setIsShown] = useState<boolean>(false);
   const Icon = isShown ? EyeSlashIcon : EyeIcon;
   const fieldId = id ?? name;
-  const validationId = `${fieldId}-validation`;
+  const errorId = `${fieldId}-error`;
 
   return (
     <section className="auth-form-field">
@@ -35,7 +37,8 @@ const PasswordField = ({
           autoComplete={autoComplete}
           minLength={minLength}
           required={required}
-          aria-describedby={validationId}
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
         />
 
         <button
@@ -48,8 +51,9 @@ const PasswordField = ({
         </button>
       </div>
 
+      {strength && <span>Strength: {strength}</span>}
       {error && (
-        <span id={validationId} aria-live="assertive" className="auth-error">
+        <span id={errorId} aria-live="assertive" className="auth-error">
           {error}
         </span>
       )}
