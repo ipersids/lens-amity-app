@@ -16,7 +16,8 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router": "^7.16.0",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.14",
+    "zxcvbn": "^4.4.2"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",

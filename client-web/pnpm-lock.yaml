@@ -26,6 +26,9 @@ importers:
       zustand:
         specifier: ^5.0.14
         version: 5.0.14(@types/react@19.2.15)(react@19.2.6)
+      zxcvbn:
+        specifier: ^4.4.2
+        version: 4.4.2
     devDependencies:
       '@biomejs/biome':
         specifier: 2.4.16
@@ -606,6 +609,9 @@ packages:
       use-sync-external-store:
         optional: true
 
+  zxcvbn@4.4.2:
+    resolution: {integrity: sha512-Bq0B+ixT/DMyG8kgX2xWcI5jUvCwqrMxSFam7m0lAf78nf04hv6lNCsyLYdyYTrCVMqNDY/206K7eExYCeSyUQ==}
+
 snapshots:
 
   '@biomejs/biome@2.4.16':
@@ -1009,3 +1015,5 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.15
       react: 19.2.6
+
+  zxcvbn@4.4.2: {}
