@@ -52,25 +52,52 @@ services:
       db:
         condition: service_healthy
 
-  minio:
-    image: quay.io/minio/aistor/minio:latest
-    container_name: minio
-    command: server --console-address ":9001" /data --license /minio.license
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    volumes:
-      - minio-data:/data
-      - ./infra/minio/minio.license:/minio.license:ro
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: rustfs
     ports:
       - "9000:9000"
       - "9001:9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          "curl -f http://localhost:9000/health && curl -f http://localhost:9001/rustfs/console/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    environment:
+      RUSTFS_EXTERNAL_ADDRESS: http://localhost:9000
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: true
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY}
+      # RUSTFS_CORS_ALLOWED_ORIGINS: "*"
+      # RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS: "*"
+    volumes:
+      - ./infra/rustfs/data:/data
+      - ./infra/rustfs/logs:/logs
+
+  # Manual repair helper for RustFS bind-mount permissions.
+  # This service is hidden behind the "perms" profile, so normal `docker compose up`
+  # will not run it. Use `just rustfs-perms` only if RustFS logs filesystem errors
+  # such as "Permission denied", "EACCES", or "failed to write".
+  rustfs_perms:
+    image: alpine
+    profiles:
+      - perms
+    user: root
+    volumes:
+      - ./infra/rustfs/logs:/logs
+      - ./infra/rustfs/data:/data
+    command: chown -R 10001:10001 /logs /data
 
 volumes:
   data:
-  minio-data:
