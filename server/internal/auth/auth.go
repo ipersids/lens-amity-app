@@ -128,11 +128,11 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Lo
 
 	nowUTC := time.Now().UTC()
 
-	token, err := s.signAccessToken(ctx, uPrivate.ID, nowUTC)
+	token, err := s.conf.signAccessToken(ctx, uPrivate.ID, nowUTC)
 	if err != nil {
 		return nil, err
 	}
-	refreshTokenData, err := s.signRefreshToken(ctx, uPrivate.ID, nowUTC)
+	refreshTokenData, err := s.conf.signRefreshToken(ctx, uPrivate.ID, nowUTC)
 	if err != nil {
 		return nil, err
 	}
@@ -210,12 +210,12 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*Refres
 		return nil, ErrCompromisedToken
 	}
 
-	accessToken, err := s.signAccessToken(ctx, userID, now)
+	accessToken, err := s.conf.signAccessToken(ctx, userID, now)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshTokenData, err := s.signRefreshToken(ctx, userID, now)
+	refreshTokenData, err := s.conf.signRefreshToken(ctx, userID, now)
 	if err != nil {
 		return nil, err
 	}

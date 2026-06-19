@@ -16,17 +16,17 @@ var (
 	ErrExpiredToken   = errors.New("token has expired")
 )
 
-func (s *AuthService) signAccessToken(ctx context.Context, userID uuid.UUID, nowUTC time.Time) (string, error) {
+func (c *Config) signAccessToken(ctx context.Context, userID uuid.UUID, nowUTC time.Time) (string, error) {
 	accessTokenClaims := jwt.RegisteredClaims{
 		Issuer:    tokenIssuer,
 		Subject:   userID.String(),
 		Audience:  jwt.ClaimStrings{tokenAudienceUser},
-		ExpiresAt: jwt.NewNumericDate(nowUTC.Add(s.conf.JWTexpiry)),
+		ExpiresAt: jwt.NewNumericDate(nowUTC.Add(c.JWTexpiry)),
 		IssuedAt:  jwt.NewNumericDate(nowUTC),
 		NotBefore: jwt.NewNumericDate(nowUTC),
 	}
 
-	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessTokenClaims).SignedString([]byte(s.conf.JWTsecret))
+	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessTokenClaims).SignedString([]byte(c.JWTsecret))
 	if err != nil {
 		return "", err
 	}
@@ -40,7 +40,7 @@ type signedRefreshTokenData struct {
 	token  string
 }
 
-func (s *AuthService) signRefreshToken(ctx context.Context, userID uuid.UUID, nowUTC time.Time) (*signedRefreshTokenData, error) {
+func (c *Config) signRefreshToken(ctx context.Context, userID uuid.UUID, nowUTC time.Time) (*signedRefreshTokenData, error) {
 	refreshTokenUUID, err := uuid.NewV7()
 	if err != nil {
 		return nil, err
@@ -51,12 +51,12 @@ func (s *AuthService) signRefreshToken(ctx context.Context, userID uuid.UUID, no
 		Issuer:    tokenIssuer,
 		Subject:   userID.String(),
 		Audience:  jwt.ClaimStrings{tokenAudienceUser},
-		ExpiresAt: jwt.NewNumericDate(nowUTC.Add(s.conf.RefreshExpiry)),
+		ExpiresAt: jwt.NewNumericDate(nowUTC.Add(c.RefreshExpiry)),
 		IssuedAt:  jwt.NewNumericDate(nowUTC),
 		NotBefore: jwt.NewNumericDate(nowUTC),
 	}
 
-	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshTokenClaims).SignedString([]byte(s.conf.RefreshSecret))
+	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshTokenClaims).SignedString([]byte(c.RefreshSecret))
 	if err != nil {
 		return nil, err
 	}
