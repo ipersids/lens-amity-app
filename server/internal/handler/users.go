@@ -4,17 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"lensamity/internal/core"
+	"lensamity/internal/auth"
 	"log/slog"
 	"net/http"
 	"time"
 )
 
 type UserHandler struct {
-	userService *core.UserService
+	userService *auth.UserService
 }
 
-func NewUserHandler(userService *core.UserService) *UserHandler {
+func NewUserHandler(userService *auth.UserService) *UserHandler {
 	return &UserHandler{
 		userService: userService,
 	}
@@ -34,7 +34,7 @@ func (h *UserHandler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.userService.GetUserProfile(ctx, username)
 	if err != nil {
-		if errors.Is(err, core.ErrorGetUserProfile) {
+		if errors.Is(err, auth.ErrorGetUserProfile) {
 			slog.Error("UserProfile not found", "error", err)
 			http.NotFound(w, r)
 			return

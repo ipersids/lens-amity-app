@@ -1,4 +1,4 @@
-package core
+package auth
 
 import (
 	"context"
@@ -25,12 +25,19 @@ import (
 // - NIST, SP 800-63B, authentication assurance: https://pages.nist.gov/800-63-4/sp800-63b.html
 // - Unicode, Technical Standard #39, https://www.unicode.org/reports/tr39/#Restriction_Level_Detection
 
+type Config struct {
+	JWTsecret     string
+	RefreshSecret string
+	JWTexpiry     time.Duration
+	RefreshExpiry time.Duration
+}
+
 type AuthService struct {
-	conf  *Auth
+	conf  *Config
 	store *db.Store
 }
 
-func NewAuthService(s *db.Store, confAuth *Auth) *AuthService {
+func NewAuthService(s *db.Store, confAuth *Config) *AuthService {
 	return &AuthService{
 		conf:  confAuth,
 		store: s,

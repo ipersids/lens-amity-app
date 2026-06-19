@@ -1,4 +1,4 @@
-set dotenv-load := false
+set dotenv-load := true
 
 alias docker := start
 
@@ -51,5 +51,10 @@ rustfs-perms:
 [private]
 exec-db user='postgres' db='test':
     docker exec -it db psql -U {{ user }} -d {{ db }}
+
+[group('docker')]
+[private]
+up-pub-db:
+    docker compose -f docker-compose.dev.yml -f ./infra/docker-compose.dev.ports.yml up db
 
 mod server
