@@ -54,7 +54,7 @@ exec-db user='postgres' db='test':
 
 [group('docker')]
 [private]
-up-pub-db:
-    docker compose -f docker-compose.dev.yml -f ./infra/docker-compose.dev.ports.yml up db
+up-pub:
+    docker compose -f docker-compose.dev.yml -f ./infra/docker-compose.dev.ports.yml up db rustfs
 
 mod server

@@ -46,10 +46,16 @@ func main() {
 
 	store, err := db.NewStore(ctx, conf.DatabaseURL)
 	if err != nil {
-		slog.Error("store initialisation failed", "error", err)
+		slog.Error("DB store initialisation failed", "error", err)
 		os.Exit(1)
 	}
 	defer store.Close()
+
+	// storage, err := storage.NewS3Client(&conf.S3)
+	// if err != nil {
+	// 	slog.Error("S3 storage initialisation failed", "error", err)
+	// 	os.Exit(1)
+	// }
 
 	mux := http.NewServeMux()
 

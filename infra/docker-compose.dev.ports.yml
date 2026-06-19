@@ -2,3 +2,8 @@ services:
   db:
     ports:
       - "5432:5432"
+
+  rustfs:
+    ports:
+      - "9000:9000"
+      - "9001:9001"
