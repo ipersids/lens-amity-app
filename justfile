@@ -1,4 +1,4 @@
-set dotenv-load := false
+set dotenv-load := true
 
 alias docker := start
 
@@ -41,9 +41,20 @@ logs +flags='':
 [group('docker')]
 start: build (up '-d') migrate
 
+# One-shot RustFS bind-mount permission repair. Not needed for normal startup.
+[group('docker')]
+rustfs-perms:
+    mkdir -p ./infra/rustfs/data ./infra/rustfs/logs
+    docker compose -f docker-compose.dev.yml --profile perms run --rm rustfs_perms
+
 [group('docker')]
 [private]
 exec-db user='postgres' db='test':
     docker exec -it db psql -U {{ user }} -d {{ db }}
+
+[group('docker')]
+[private]
+up-pub:
+    docker compose -f docker-compose.dev.yml -f ./infra/docker-compose.dev.ports.yml up db rustfs
 
 mod server

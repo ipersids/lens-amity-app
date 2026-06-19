@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"lensamity/internal/core"
+	"lensamity/internal/auth"
+	"lensamity/internal/config"
 	"lensamity/internal/db"
 	"lensamity/internal/handler"
 	"lensamity/internal/middleware"
@@ -41,23 +42,25 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	conf, err := core.InitConfig()
-	if err != nil {
-		slog.Error("config initialisation failed", "error", err)
-		os.Exit(1)
-	}
+	conf := config.Load()
 
-	store, err := db.InitStore(ctx, conf.DatabaseURL)
+	store, err := db.NewStore(ctx, conf.DatabaseURL)
 	if err != nil {
-		slog.Error("store initialisation failed", "error", err)
+		slog.Error("DB store initialisation failed", "error", err)
 		os.Exit(1)
 	}
 	defer store.Close()
 
+	// storage, err := storage.NewS3Client(&conf.S3)
+	// if err != nil {
+	// 	slog.Error("S3 storage initialisation failed", "error", err)
+	// 	os.Exit(1)
+	// }
+
 	mux := http.NewServeMux()
 
-	authService := core.NewAuthService(store, &conf.Auth)
-	userService := core.NewUserService(store)
+	authService := auth.NewAuthService(store, &conf.Auth)
+	userService := auth.NewUserService(store)
 
 	h := handlers{
 		auth: handler.NewAuthHandler(authService),

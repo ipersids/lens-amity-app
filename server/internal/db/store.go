@@ -14,7 +14,7 @@ type Store struct {
 	Pool    *pgxpool.Pool
 }
 
-func InitStore(ctx context.Context, dbURL string) (*Store, error) {
+func NewStore(ctx context.Context, dbURL string) (*Store, error) {
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pool: %w", err)

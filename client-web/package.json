@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.25.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -24,6 +25,7 @@
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/zxcvbn": "^4.4.5",
     "@vitejs/plugin-react": "^6.0.1",
     "globals": "^17.6.0",
     "typescript": "~6.0.2",

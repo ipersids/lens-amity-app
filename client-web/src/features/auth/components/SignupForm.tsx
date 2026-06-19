@@ -1,9 +1,9 @@
 import { type SubmitEventHandler, useState } from "react";
 import { useNavigate } from "react-router";
 import { useLoading, useSignup } from "../../../stores/auth";
+import { validatePassword, validateUsername } from "../validation";
 import PasswordField from "./PasswordField";
 import TextField from "./TextField";
-import { validatePassword, validateUsername } from "../validation";
 
 const SignupForm = () => {
   const signup = useSignup();

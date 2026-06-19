@@ -1,1 +1,6 @@
 .env
+
+minio.license
+client-web/.pnpm-store/
+infra/rustfs/data
+infra/rustfs/logs

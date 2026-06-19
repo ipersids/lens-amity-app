@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"lensamity/internal/core"
+	"lensamity/internal/auth"
 	"lensamity/internal/middleware"
 	"log/slog"
 	"net/http"
@@ -14,10 +14,10 @@ import (
 )
 
 type AuthHandler struct {
-	authService *core.AuthService
+	authService *auth.AuthService
 }
 
-func NewAuthHandler(authService *core.AuthService) *AuthHandler {
+func NewAuthHandler(authService *auth.AuthService) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
 	}
@@ -61,7 +61,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	user, err := h.authService.Signup(ctx, req.Username, req.DisplayName, req.Password)
 
 	if err != nil {
-		if errors.Is(err, core.ErrInvalidCredentials) {
+		if errors.Is(err, auth.ErrInvalidCredentials) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
