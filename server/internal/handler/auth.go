@@ -13,13 +13,21 @@ import (
 	"github.com/google/uuid"
 )
 
-type AuthHandler struct {
-	authService *auth.AuthService
+type authService interface {
+	Signup(context.Context, string, string, string) (*auth.SignupResponse, error)
+	Login(context.Context, string, string) (*auth.LoginResult, error)
+	Refresh(context.Context, string) (*auth.RefreshResult, error)
+	Logout(context.Context, string) error
+	LogoutAll(context.Context, uuid.UUID) error
 }
 
-func NewAuthHandler(authService *auth.AuthService) *AuthHandler {
+type AuthHandler struct {
+	authService authService
+}
+
+func NewAuthHandler(service authService) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
+		authService: service,
 	}
 }
 
