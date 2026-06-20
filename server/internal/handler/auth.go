@@ -44,13 +44,12 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
-		slog.Error("failed to decode SignupRequest", "error", err)
-		http.Error(w, "malformed JSON", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed JSON")
 		return
 	}
 
 	if req.Username == "" || req.Password == "" {
-		http.Error(w, "invalid credentials", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "invalid_signup", "username and password are required")
 		return
 	}
 
@@ -61,15 +60,21 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	user, err := h.authService.Signup(ctx, req.Username, req.DisplayName, req.Password)
 
 	if err != nil {
-		if errors.Is(err, auth.ErrInvalidCredentials) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		if errors.Is(err, auth.ErrUsernameTaken) {
+			WriteError(w, http.StatusConflict, "username_taken", "username is not available")
 			return
 		}
-		slog.Error("Signup: request failed", "error", err)
-		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, auth.ErrInternal) {
+			slog.Error("Signup: request failed", "error", err)
+			WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
+			return
+		}
+		WriteError(w, http.StatusBadRequest, "invalid_signup", err.Error())
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 	err = json.NewEncoder(w).Encode(SignupResponse{Username: user.UsernameKey, DisplayName: user.UsernameDisplay})
 
 	if err != nil {
@@ -97,13 +102,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
-		slog.Error("failed to decode LoginRequest", "error", err)
-		http.Error(w, "malformed JSON", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed JSON")
 		return
 	}
 
 	if req.Username == "" || req.Password == "" {
-		http.Error(w, "invalid credentials", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "invalid_request", "username and password are required")
 		return
 	}
 
@@ -113,15 +117,16 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.authService.Login(ctx, req.Username, req.Password)
 	if err != nil {
-		slog.Error("Login request failed", "error", err)
-		if errors.Is(err, context.DeadlineExceeded) {
-			http.Error(w, "Database timeout exceeded", http.StatusGatewayTimeout)
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			WriteError(w, http.StatusUnauthorized, "invalid_credentials", "")
 			return
 		}
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		slog.Error("Login request failed", "error", err)
+		WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(LoginResponse{
 		AccessToken:  user.AccessToken,
 		RefreshToken: user.RefreshToken,
@@ -151,13 +156,12 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
-		slog.Error("failed to decode RefreshRequest", "error", err)
-		http.Error(w, "malformed request body", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed request body")
 		return
 	}
 
 	if req.RefreshToken == "" {
-		http.Error(w, "malformed request body", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "invalid_request", "refresh token is required")
 		return
 	}
 
@@ -167,11 +171,15 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	refreshed, err := h.authService.Refresh(ctx, req.RefreshToken)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			http.Error(w, "timeout exceeded", http.StatusGatewayTimeout)
+		if errors.Is(err, auth.ErrInvalidToken) || errors.Is(err, auth.ErrExpiredToken) || errors.Is(err, auth.ErrCompromisedToken) {
+			if errors.Is(err, auth.ErrCompromisedToken) {
+				slog.Warn("refresh token replay detected", "error", err)
+			}
+			WriteError(w, http.StatusUnauthorized, "invalid_token", "")
 			return
 		}
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		slog.Error("Refresh request failed", "error", err)
+		WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
 		return
 	}
 
@@ -180,6 +188,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(RefreshResponse{AccessToken: refreshed.AccessToken, RefreshToken: refreshed.RefreshToken})
 
 	if err != nil {
@@ -199,13 +208,12 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
-		slog.Error("failed to decode LogoutRequest", "error", err)
-		http.Error(w, "malformed request body", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed request body")
 		return
 	}
 
 	if req.RefreshToken == "" {
-		http.Error(w, "malformed request body", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "invalid_request", "refresh token is required")
 		return
 	}
 
@@ -215,7 +223,12 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	err := h.authService.Logout(ctx, req.RefreshToken)
 	if err != nil {
-		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		if errors.Is(err, auth.ErrInvalidToken) || errors.Is(err, auth.ErrExpiredToken) {
+			WriteError(w, http.StatusUnauthorized, "invalid_token", "")
+			return
+		}
+		slog.Error("Logout request failed", "error", err)
+		WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
 		return
 	}
 
@@ -227,7 +240,7 @@ func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 
 	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
 		return
 	}
 
@@ -237,9 +250,17 @@ func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 
 	err := h.authService.LogoutAll(ctx, userID)
 	if err != nil {
-		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		slog.Error("LogoutAll request failed", "error", err)
+		WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func statusForAuthError(err error) int {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return http.StatusGatewayTimeout
+	}
+	return http.StatusInternalServerError
 }

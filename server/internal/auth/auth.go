@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"lensamity/internal/db"
-	"log/slog"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/text/unicode/norm"
 )
@@ -43,23 +43,30 @@ func (s *AuthService) ValidateAccessToken(tokenStr string) (*jwt.RegisteredClaim
 }
 
 var (
+	ErrUsernameTaken      = errors.New("username is not available")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrCompromisedToken   = errors.New("token was compromised")
+	ErrInternal           = errors.New("internal auth error")
 )
 
 const dummyHash = "$argon2id$v=19$m=65536,t=3,p=2$72aaaaK2bbDJWl0/X2o4EQ$Nu9PSnVbhaHuKb5iLb6JDAdQ5z+0spTUEAO7tqBVvHA"
 
-func (s *AuthService) Signup(ctx context.Context, uername, displayName, password string) (*db.CreateUserRow, error) {
+type SignupResponse struct {
+	UsernameKey     string
+	UsernameDisplay string
+}
+
+func (s *AuthService) Signup(ctx context.Context, uername, displayName, password string) (*SignupResponse, error) {
 	p := norm.NFC.String(password)
 	ukey := normKey(uername)
 	udisplay := normDisplay(displayName)
 
 	if err := validateUsernameKey(ukey); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, err.Error())
+		return nil, err
 	}
 
 	if err := validatePassword(p, []string{ukey, udisplay}); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, err.Error())
+		return nil, err
 	}
 
 	if udisplay == "" {
@@ -67,12 +74,12 @@ func (s *AuthService) Signup(ctx context.Context, uername, displayName, password
 	}
 
 	if err := validateNameLength(udisplay); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidCredentials, err.Error())
+		return nil, err
 	}
 
 	hash, err := generateFromPassword([]byte(p))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: generate password hash: %v", ErrInternal, err)
 	}
 
 	user, err := s.store.Queries.CreateUser(ctx, db.CreateUserParams{
@@ -83,12 +90,19 @@ func (s *AuthService) Signup(ctx context.Context, uername, displayName, password
 
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
+			return nil, fmt.Errorf("create user timeout: %w", err)
 		}
-		return nil, ErrInvalidCredentials
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // PostgreSQL Error Codes: "23505" - unique_violation
+			return nil, ErrUsernameTaken
+		}
+		return nil, fmt.Errorf("%w: create user: %v", ErrInternal, err)
 	}
 
-	return &user, nil
+	return &SignupResponse{
+		UsernameKey:     user.UsernameKey,
+		UsernameDisplay: user.UsernameDisplay,
+	}, nil
 }
 
 type LoginResult struct {
@@ -103,31 +117,38 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Lo
 	ukey := normKey(username)
 
 	if err := validatePasswordLength(p); err != nil {
-		return nil, err
+		return nil, ErrInvalidCredentials
 	}
 
 	uPrivate, err := s.store.Queries.GetFullUserDataByKey(ctx, ukey)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("get full user data by key timeout: %w", err)
+		}
 		if errors.Is(err, pgx.ErrNoRows) {
+			// Keep timing close to a wrong password.
 			_ = compareHashAndPassword(dummyHash, []byte(p))
 			return nil, ErrInvalidCredentials
 		}
-		return nil, err
+		return nil, fmt.Errorf("%w: get full user data by key: %v", ErrInternal, err)
 	}
 
 	if err := compareHashAndPassword(uPrivate.PasswordHash, []byte(p)); err != nil {
-		return nil, err
+		if errors.Is(err, ErrPasswordMismatch) {
+			return nil, ErrInvalidCredentials
+		}
+		return nil, fmt.Errorf("%w: compare hash and password: %v", ErrInternal, err)
 	}
 
 	nowUTC := time.Now().UTC()
 
 	token, err := s.conf.signAccessToken(ctx, uPrivate.ID, nowUTC)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: sign access token: %v", ErrInternal, err)
 	}
 	refreshTokenData, err := s.conf.signRefreshToken(ctx, uPrivate.ID, nowUTC)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: sign refresh token: %v", ErrInternal, err)
 	}
 
 	err = s.store.Queries.CreateNewRefreshToken(ctx, db.CreateNewRefreshTokenParams{
@@ -136,7 +157,10 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Lo
 		ExpiresAt: refreshTokenData.claims.ExpiresAt.Time,
 	})
 	if err != nil {
-		return nil, err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("create new refresh token timeout: %w", err)
+		}
+		return nil, fmt.Errorf("%w: create new refresh token: %v", ErrInternal, err)
 	}
 
 	return &LoginResult{
@@ -161,25 +185,34 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*Refres
 
 	userID, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return nil, err
+		return nil, ErrInvalidToken
 	}
 
 	now := time.Now().Truncate(time.Second)
 
 	tokenID, err := uuid.Parse(claims.ID)
 	if err != nil {
-		return nil, err
+		return nil, ErrInvalidToken
 	}
 
 	tx, err := s.store.Pool.Begin(ctx)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("begin refresh transaction timeout: %w", err)
+		}
+		return nil, fmt.Errorf("%w: begin refresh transaction: %v", ErrInternal, err)
 	}
 	defer tx.Rollback(ctx)
 
 	rtoken, err := s.store.Queries.WithTx(tx).GetRefreshTokenForUpdate(ctx, db.GetRefreshTokenForUpdateParams{ID: tokenID, UserID: userID})
 	if err != nil {
-		return nil, err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrInvalidToken
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("get refresh token for update timeout: %w", err)
+		}
+		return nil, fmt.Errorf("%w: get refresh token for update: %v", ErrInternal, err)
 	}
 
 	if rtoken.Revoked {
@@ -190,27 +223,27 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*Refres
 				RefreshToken: "",
 			}, nil
 		}
-		// enable reuse detection
+		// Enable reuse detection
 		if _, err := s.store.Queries.WithTx(tx).RevokeAllUserTokens(ctx, db.RevokeAllUserTokensParams{
 			UserID:        userID,
 			RevokedReason: db.NullTokenRevokedReason{TokenRevokedReason: db.TokenRevokedReasonReplayed, Valid: true},
 		}); err != nil {
-			return nil, fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
+			return nil, fmt.Errorf("%w: revoke replayed user tokens: %v", ErrInternal, err)
 		}
 		if err := tx.Commit(ctx); err != nil {
-			return nil, fmt.Errorf("%w: %s", ErrCompromisedToken, err.Error())
+			return nil, fmt.Errorf("%w: commit replayed token revocation: %v", ErrInternal, err)
 		}
 		return nil, ErrCompromisedToken
 	}
 
 	accessToken, err := s.conf.signAccessToken(ctx, userID, now)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: sign access token: %v", ErrInternal, err)
 	}
 
 	refreshTokenData, err := s.conf.signRefreshToken(ctx, userID, now)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: sign refresh token: %v", ErrInternal, err)
 	}
 
 	_, err = s.store.Queries.WithTx(tx).RotateRefreshToken(ctx, db.RotateRefreshTokenParams{
@@ -220,7 +253,10 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*Refres
 		RevokedReason:    db.NullTokenRevokedReason{TokenRevokedReason: db.TokenRevokedReasonRefresh, Valid: true},
 	})
 	if err != nil {
-		return nil, err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("rotate refresh token timeout: %w", err)
+		}
+		return nil, fmt.Errorf("%w: rotate refresh token: %v", ErrInternal, err)
 	}
 
 	err = s.store.Queries.WithTx(tx).CreateNewRefreshToken(ctx, db.CreateNewRefreshTokenParams{
@@ -229,11 +265,14 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*Refres
 		ExpiresAt: refreshTokenData.claims.ExpiresAt.Time,
 	})
 	if err != nil {
-		return nil, err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("create rotated refresh token timeout: %w", err)
+		}
+		return nil, fmt.Errorf("%w: create rotated refresh token: %v", ErrInternal, err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: commit refresh token rotation: %v", ErrInternal, err)
 	}
 
 	return &RefreshResult{
@@ -246,19 +285,17 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*Refres
 func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 	claims, err := validateToken(refreshToken, s.conf.RefreshSecret)
 	if err != nil {
-		slog.Error("1", "", err)
-		return nil
+		return err
 	}
 
 	userID, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		slog.Error("2", "", err)
-		return err
+		return ErrInvalidToken
 	}
 
 	tokenID, err := uuid.Parse(claims.ID)
 	if err != nil {
-		return err
+		return ErrInvalidToken
 	}
 
 	_, err = s.store.Queries.RevokeRefreshToken(ctx, db.RevokeRefreshTokenParams{
@@ -267,7 +304,10 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 		UserID:        userID,
 	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("revoke refresh token timeout: %w", err)
+		}
+		return fmt.Errorf("%w: revoke refresh token: %v", ErrInternal, err)
 	}
 
 	return nil
@@ -279,7 +319,10 @@ func (s *AuthService) LogoutAll(ctx context.Context, userID uuid.UUID) error {
 		RevokedReason: db.NullTokenRevokedReason{TokenRevokedReason: db.TokenRevokedReasonLogout, Valid: true},
 	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("revoke all user tokens timeout: %w", err)
+		}
+		return fmt.Errorf("%w: revoke all user tokens: %v", ErrInternal, err)
 	}
 	return nil
 }
