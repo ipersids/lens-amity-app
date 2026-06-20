@@ -25,7 +25,6 @@ func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware fun
 	mux.HandleFunc("GET /health", handler.HealthCheck)
 	mux.HandleFunc("POST /api/auth/signup", h.auth.Signup)
 	mux.HandleFunc("POST /api/auth/login", h.auth.Login)
-	mux.HandleFunc("POST /api/auth/refresh", h.auth.Refresh)
 	mux.HandleFunc("POST /api/auth/logout", authRequiredMiddleware(h.auth.Logout))
 	mux.HandleFunc("POST /api/auth/logout-all", authRequiredMiddleware(h.auth.LogoutAll))
 

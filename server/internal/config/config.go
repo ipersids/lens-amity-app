@@ -5,7 +5,6 @@ import (
 	"lensamity/internal/storage"
 	"log"
 	"os"
-	"time"
 )
 
 type Config struct {
@@ -23,12 +22,7 @@ func Load() *Config {
 }
 
 func LoadAuth() auth.Config {
-	return auth.Config{
-		JWTsecret:     required("JWT_SECRET"),
-		RefreshSecret: required("REFRESH_SECRET"),
-		JWTexpiry:     15 * time.Minute,
-		RefreshExpiry: 24 * time.Hour,
-	}
+	return auth.Config{}
 }
 
 func LoadDB() string {

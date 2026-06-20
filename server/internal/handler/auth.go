@@ -16,7 +16,6 @@ import (
 type authService interface {
 	Signup(context.Context, string, string, string) (*auth.SignupResponse, error)
 	Login(context.Context, string, string) (*auth.LoginResult, error)
-	Refresh(context.Context, string) (*auth.RefreshResult, error)
 	Logout(context.Context, string) error
 	LogoutAll(context.Context, uuid.UUID) error
 }
@@ -136,71 +135,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(LoginResponse{
-		AccessToken:  user.AccessToken,
-		RefreshToken: user.RefreshToken,
-		Username:     user.Username,
-		DisplayName:  user.DisplayName,
+		Username:    user.Username,
+		DisplayName: user.DisplayName,
 	})
 
 	if err != nil {
 		slog.Error("Login: failed encode response", "error", err)
-	}
-}
-
-type RefreshRequest struct {
-	RefreshToken string `json:"refreshToken"`
-}
-
-type RefreshResponse struct {
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-}
-
-func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
-
-	var req RefreshRequest
-
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed request body")
-		return
-	}
-
-	if req.RefreshToken == "" {
-		WriteError(w, http.StatusBadRequest, "invalid_request", "refresh token is required")
-		return
-	}
-
-	ctx := r.Context()
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	refreshed, err := h.authService.Refresh(ctx, req.RefreshToken)
-	if err != nil {
-		if errors.Is(err, auth.ErrInvalidToken) || errors.Is(err, auth.ErrExpiredToken) || errors.Is(err, auth.ErrCompromisedToken) {
-			if errors.Is(err, auth.ErrCompromisedToken) {
-				slog.Warn("refresh token replay detected", "error", err)
-			}
-			WriteError(w, http.StatusUnauthorized, "invalid_token", "")
-			return
-		}
-		slog.Error("Refresh request failed", "error", err)
-		WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
-		return
-	}
-
-	if refreshed.Replayed {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(RefreshResponse{AccessToken: refreshed.AccessToken, RefreshToken: refreshed.RefreshToken})
-
-	if err != nil {
-		slog.Error("Refresh: failed encode response", "error", err)
 	}
 }
 
@@ -209,32 +149,13 @@ type LogoutRequest struct {
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
-
-	var req RefreshRequest
-
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed request body")
-		return
-	}
-
-	if req.RefreshToken == "" {
-		WriteError(w, http.StatusBadRequest, "invalid_request", "refresh token is required")
-		return
-	}
 
 	ctx := r.Context()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	err := h.authService.Logout(ctx, req.RefreshToken)
+	err := h.authService.Logout(ctx, "")
 	if err != nil {
-		if errors.Is(err, auth.ErrInvalidToken) || errors.Is(err, auth.ErrExpiredToken) {
-			WriteError(w, http.StatusUnauthorized, "invalid_token", "")
-			return
-		}
 		slog.Error("Logout request failed", "error", err)
 		WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
 		return
@@ -244,8 +165,6 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
-
 	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
 	if !ok {
 		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
