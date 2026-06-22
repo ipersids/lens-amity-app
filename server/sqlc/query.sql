@@ -83,11 +83,10 @@ WHERE token_hash = sqlc.arg(token_hash)
   AND revoked_at IS NULL
 RETURNING token_hash, revoked_at, revoked_reason, grace_period_until;
 
--- name: RevokeAllSessions :many
+-- name: RevokeAllSessions :exec
 UPDATE sessions
   SET revoked_at = sqlc.arg(revoked_at),
   revoked_reason = sqlc.arg(revoked_reason),
   grace_period_until = sqlc.narg(grace_period_until)
 WHERE user_id = sqlc.arg(user_id)
-  AND revoked_at IS NULL
-RETURNING token_hash, revoked_at, revoked_reason, grace_period_until;
+  AND revoked_at IS NULL;

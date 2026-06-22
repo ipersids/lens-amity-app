@@ -188,14 +188,13 @@ func (q *Queries) GetSessionForUpdate(ctx context.Context, tokenHash []byte) (Se
 	return i, err
 }
 
-const revokeAllSessions = `-- name: RevokeAllSessions :many
+const revokeAllSessions = `-- name: RevokeAllSessions :exec
 UPDATE sessions
   SET revoked_at = $1,
   revoked_reason = $2,
   grace_period_until = $3
 WHERE user_id = $4
   AND revoked_at IS NULL
-RETURNING token_hash, revoked_at, revoked_reason, grace_period_until
 `
 
 type RevokeAllSessionsParams struct {
@@ -205,41 +204,14 @@ type RevokeAllSessionsParams struct {
 	UserID           uuid.UUID
 }
 
-type RevokeAllSessionsRow struct {
-	TokenHash        []byte
-	RevokedAt        pgtype.Timestamptz
-	RevokedReason    NullSessionRevokedReason
-	GracePeriodUntil pgtype.Timestamptz
-}
-
-func (q *Queries) RevokeAllSessions(ctx context.Context, arg RevokeAllSessionsParams) ([]RevokeAllSessionsRow, error) {
-	rows, err := q.db.Query(ctx, revokeAllSessions,
+func (q *Queries) RevokeAllSessions(ctx context.Context, arg RevokeAllSessionsParams) error {
+	_, err := q.db.Exec(ctx, revokeAllSessions,
 		arg.RevokedAt,
 		arg.RevokedReason,
 		arg.GracePeriodUntil,
 		arg.UserID,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []RevokeAllSessionsRow
-	for rows.Next() {
-		var i RevokeAllSessionsRow
-		if err := rows.Scan(
-			&i.TokenHash,
-			&i.RevokedAt,
-			&i.RevokedReason,
-			&i.GracePeriodUntil,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	return err
 }
 
 const revokeSession = `-- name: RevokeSession :one
