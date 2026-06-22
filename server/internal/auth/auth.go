@@ -17,6 +17,9 @@ import (
 // - NIST, SP 800-63B, authentication assurance: https://pages.nist.gov/800-63-4/sp800-63b.html
 // - Unicode, Technical Standard #39, https://www.unicode.org/reports/tr39/#Restriction_Level_Detection
 
+// Idle timeout: compare now() with last_seen_at.
+// Absolute timeout: compare now() with absolute_expires_at.
+// Renewal timeout: compare now() with created_at.
 type Config struct {
 	SessionSecret   string
 	IdleTimeout     time.Duration
@@ -27,14 +30,16 @@ type Config struct {
 }
 
 type AuthService struct {
-	conf  *Config
-	store *db.Store
+	config *Config
+	store  *db.Store
+	tokens *sessionTokens
 }
 
-func NewAuthService(s *db.Store, confAuth *Config) *AuthService {
+func NewAuthService(store *db.Store, confAuth *Config) *AuthService {
 	return &AuthService{
-		conf:  confAuth,
-		store: s,
+		config: confAuth,
+		store:  store,
+		tokens: newSessionTokens(confAuth.SessionSecret),
 	}
 }
 
