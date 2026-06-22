@@ -3,7 +3,6 @@ import { persist } from "zustand/middleware";
 import { getApiErrorMessage } from "../services/api";
 import type { LoginItem, SignupItem } from "../services/auth";
 import authService from "../services/auth";
-import tokenService, { TokenKey } from "../services/token";
 
 interface CurrentUser {
   username: string;
@@ -15,7 +14,6 @@ interface AuthActions {
   login: (input: LoginItem) => Promise<void>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
-  syncSession: () => void;
 }
 
 interface AuthState {
@@ -53,9 +51,6 @@ const useAuthStore = create<AuthState>()(
           try {
             const data = await authService.login({ ...input });
 
-            tokenService.set(TokenKey.Access, data.accessToken);
-            tokenService.set(TokenKey.Refresh, data.refreshToken);
-
             set(() => ({
               user: {
                 username: data.username,
@@ -75,18 +70,12 @@ const useAuthStore = create<AuthState>()(
           set(() => ({ isLoading: true }));
 
           try {
-            const refreshToken = tokenService.get(TokenKey.Refresh);
-
-            if (refreshToken) {
-              await authService.logout({ refreshToken });
-            }
+            await authService.logout();
           } finally {
             set(() => ({
               user: null,
               isLoading: false,
             }));
-
-            tokenService.reset();
           }
         },
 
@@ -104,13 +93,6 @@ const useAuthStore = create<AuthState>()(
               user: null,
               isLoading: false,
             }));
-
-            tokenService.reset();
-          }
-        },
-        syncSession: () => {
-          if (!tokenService.hasAuthTokens()) {
-            set(() => ({ user: null }));
           }
         },
       },
@@ -126,7 +108,6 @@ const useAuthStore = create<AuthState>()(
 
 export const useUser = () => useAuthStore((state) => state.user);
 export const useLoading = () => useAuthStore((state) => state.isLoading);
-export const useSyncSession = () => useAuthStore((state) => state.actions.syncSession);
 export const useSignup = () => useAuthStore((state) => state.actions.signup);
 export const useLogin = () => useAuthStore((state) => state.actions.login);
 export const useLogout = () => useAuthStore((state) => state.actions.logout);

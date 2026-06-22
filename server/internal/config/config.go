@@ -27,9 +27,7 @@ func LoadAuth() auth.Config {
 		SessionSecret:   required("SESSION_SECRET"),
 		IdleTimeout:     2 * 24 * time.Hour,
 		AbsoluteTimeout: 15 * 24 * time.Hour,
-		RenewalTimeout:  12 * time.Hour,
 		TouchInterval:   15 * time.Minute,
-		RenewalGrace:    10 * time.Second,
 	}
 }
 

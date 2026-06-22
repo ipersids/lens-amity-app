@@ -95,10 +95,8 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-	Username     string `json:"username"`
-	DisplayName  string `json:"displayName"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -133,6 +131,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	middleware.SetSessionCookie(w, user.CookieToken, user.CookieExpiredAt)
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(LoginResponse{
 		Username:    user.Username,
@@ -144,23 +143,31 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type LogoutRequest struct {
-	RefreshToken string `json:"refreshToken"`
-}
-
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-
 	ctx := r.Context()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	err := h.authService.Logout(ctx, "")
+	cookie, err := r.Cookie(middleware.SessionCookieName)
+	if errors.Is(err, http.ErrNoCookie) {
+		middleware.ClearSessionCookie(w)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err != nil {
+		middleware.ClearSessionCookie(w)
+		WriteError(w, http.StatusBadRequest, "invalid_cookie", "invalid session cookie")
+		return
+	}
+
+	err = h.authService.Logout(ctx, cookie.Value)
 	if err != nil {
 		slog.Error("Logout request failed", "error", err)
 		WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
 		return
 	}
 
+	middleware.ClearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -182,6 +189,7 @@ func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	middleware.ClearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 

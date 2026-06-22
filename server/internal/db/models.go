@@ -5,56 +5,11 @@
 package db
 
 import (
-	"database/sql/driver"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
-
-type SessionRevokedReason string
-
-const (
-	SessionRevokedReasonRenewed  SessionRevokedReason = "renewed"
-	SessionRevokedReasonLogout   SessionRevokedReason = "logout"
-	SessionRevokedReasonReplayed SessionRevokedReason = "replayed"
-)
-
-func (e *SessionRevokedReason) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = SessionRevokedReason(s)
-	case string:
-		*e = SessionRevokedReason(s)
-	default:
-		return fmt.Errorf("unsupported scan type for SessionRevokedReason: %T", src)
-	}
-	return nil
-}
-
-type NullSessionRevokedReason struct {
-	SessionRevokedReason SessionRevokedReason
-	Valid                bool // Valid is true if SessionRevokedReason is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullSessionRevokedReason) Scan(value interface{}) error {
-	if value == nil {
-		ns.SessionRevokedReason, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.SessionRevokedReason.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullSessionRevokedReason) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.SessionRevokedReason), nil
-}
 
 type Session struct {
 	TokenHash         []byte
@@ -63,8 +18,6 @@ type Session struct {
 	LastSeenAt        time.Time
 	AbsoluteExpiresAt time.Time
 	RevokedAt         pgtype.Timestamptz
-	RevokedReason     NullSessionRevokedReason
-	GracePeriodUntil  pgtype.Timestamptz
 }
 
 type User struct {

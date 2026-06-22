@@ -46,25 +46,9 @@ SELECT
   created_at,
   last_seen_at,
   absolute_expires_at,
-  revoked_at,
-  revoked_reason,
-  grace_period_until
+  revoked_at
 FROM sessions
 WHERE token_hash = sqlc.arg(token_hash);
-
--- name: GetSessionForUpdate :one
-SELECT
-  token_hash,
-  user_id,
-  created_at,
-  last_seen_at,
-  absolute_expires_at,
-  revoked_at,
-  revoked_reason,
-  grace_period_until
-FROM sessions
-WHERE token_hash = sqlc.arg(token_hash)
-FOR UPDATE;
 
 -- name: UpdateSessionActivity :one
 UPDATE sessions
@@ -76,17 +60,13 @@ RETURNING token_hash, last_seen_at;
 
 -- name: RevokeSession :one
 UPDATE sessions
-  SET revoked_at = sqlc.arg(revoked_at),
-  revoked_reason = sqlc.arg(revoked_reason),
-  grace_period_until = sqlc.narg(grace_period_until)
+  SET revoked_at = sqlc.arg(revoked_at)
 WHERE token_hash = sqlc.arg(token_hash)
   AND revoked_at IS NULL
-RETURNING token_hash, revoked_at, revoked_reason, grace_period_until;
+RETURNING token_hash, revoked_at;
 
 -- name: RevokeAllSessions :exec
 UPDATE sessions
-  SET revoked_at = sqlc.arg(revoked_at),
-  revoked_reason = sqlc.arg(revoked_reason),
-  grace_period_until = sqlc.narg(grace_period_until)
+  SET revoked_at = sqlc.arg(revoked_at)
 WHERE user_id = sqlc.arg(user_id)
   AND revoked_at IS NULL;

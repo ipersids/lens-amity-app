@@ -134,9 +134,7 @@ SELECT
   created_at,
   last_seen_at,
   absolute_expires_at,
-  revoked_at,
-  revoked_reason,
-  grace_period_until
+  revoked_at
 FROM sessions
 WHERE token_hash = $1
 `
@@ -151,107 +149,49 @@ func (q *Queries) GetSession(ctx context.Context, tokenHash []byte) (Session, er
 		&i.LastSeenAt,
 		&i.AbsoluteExpiresAt,
 		&i.RevokedAt,
-		&i.RevokedReason,
-		&i.GracePeriodUntil,
-	)
-	return i, err
-}
-
-const getSessionForUpdate = `-- name: GetSessionForUpdate :one
-SELECT
-  token_hash,
-  user_id,
-  created_at,
-  last_seen_at,
-  absolute_expires_at,
-  revoked_at,
-  revoked_reason,
-  grace_period_until
-FROM sessions
-WHERE token_hash = $1
-FOR UPDATE
-`
-
-func (q *Queries) GetSessionForUpdate(ctx context.Context, tokenHash []byte) (Session, error) {
-	row := q.db.QueryRow(ctx, getSessionForUpdate, tokenHash)
-	var i Session
-	err := row.Scan(
-		&i.TokenHash,
-		&i.UserID,
-		&i.CreatedAt,
-		&i.LastSeenAt,
-		&i.AbsoluteExpiresAt,
-		&i.RevokedAt,
-		&i.RevokedReason,
-		&i.GracePeriodUntil,
 	)
 	return i, err
 }
 
 const revokeAllSessions = `-- name: RevokeAllSessions :exec
 UPDATE sessions
-  SET revoked_at = $1,
-  revoked_reason = $2,
-  grace_period_until = $3
-WHERE user_id = $4
+  SET revoked_at = $1
+WHERE user_id = $2
   AND revoked_at IS NULL
 `
 
 type RevokeAllSessionsParams struct {
-	RevokedAt        pgtype.Timestamptz
-	RevokedReason    NullSessionRevokedReason
-	GracePeriodUntil pgtype.Timestamptz
-	UserID           uuid.UUID
+	RevokedAt pgtype.Timestamptz
+	UserID    uuid.UUID
 }
 
 func (q *Queries) RevokeAllSessions(ctx context.Context, arg RevokeAllSessionsParams) error {
-	_, err := q.db.Exec(ctx, revokeAllSessions,
-		arg.RevokedAt,
-		arg.RevokedReason,
-		arg.GracePeriodUntil,
-		arg.UserID,
-	)
+	_, err := q.db.Exec(ctx, revokeAllSessions, arg.RevokedAt, arg.UserID)
 	return err
 }
 
 const revokeSession = `-- name: RevokeSession :one
 UPDATE sessions
-  SET revoked_at = $1,
-  revoked_reason = $2,
-  grace_period_until = $3
-WHERE token_hash = $4
+  SET revoked_at = $1
+WHERE token_hash = $2
   AND revoked_at IS NULL
-RETURNING token_hash, revoked_at, revoked_reason, grace_period_until
+RETURNING token_hash, revoked_at
 `
 
 type RevokeSessionParams struct {
-	RevokedAt        pgtype.Timestamptz
-	RevokedReason    NullSessionRevokedReason
-	GracePeriodUntil pgtype.Timestamptz
-	TokenHash        []byte
+	RevokedAt pgtype.Timestamptz
+	TokenHash []byte
 }
 
 type RevokeSessionRow struct {
-	TokenHash        []byte
-	RevokedAt        pgtype.Timestamptz
-	RevokedReason    NullSessionRevokedReason
-	GracePeriodUntil pgtype.Timestamptz
+	TokenHash []byte
+	RevokedAt pgtype.Timestamptz
 }
 
 func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) (RevokeSessionRow, error) {
-	row := q.db.QueryRow(ctx, revokeSession,
-		arg.RevokedAt,
-		arg.RevokedReason,
-		arg.GracePeriodUntil,
-		arg.TokenHash,
-	)
+	row := q.db.QueryRow(ctx, revokeSession, arg.RevokedAt, arg.TokenHash)
 	var i RevokeSessionRow
-	err := row.Scan(
-		&i.TokenHash,
-		&i.RevokedAt,
-		&i.RevokedReason,
-		&i.GracePeriodUntil,
-	)
+	err := row.Scan(&i.TokenHash, &i.RevokedAt)
 	return i, err
 }
 

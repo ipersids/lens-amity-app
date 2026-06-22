@@ -20,14 +20,11 @@ import (
 
 // Idle timeout: compare now() with last_seen_at.
 // Absolute timeout: compare now() with absolute_expires_at.
-// Renewal timeout: compare now() with created_at.
 type Config struct {
 	SessionSecret   string
 	IdleTimeout     time.Duration
 	AbsoluteTimeout time.Duration
-	RenewalTimeout  time.Duration
 	TouchInterval   time.Duration
-	RenewalGrace    time.Duration
 }
 
 type AuthService struct {
@@ -47,6 +44,7 @@ func NewAuthService(store *db.Store, confAuth *Config) *AuthService {
 var (
 	ErrUsernameTaken      = errors.New("username is not available")
 	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrInvalidSession     = errors.New("invalid session")
 	ErrInternal           = errors.New("internal auth error")
 )
 
@@ -129,7 +127,7 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Lo
 	uPrivate, err := s.store.Queries.GetFullUserDataByKey(ctx, ukey)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("get full user data by key timeout: %w", err)
+			return nil, fmt.Errorf("%w: get full user data by key timeout: %w", ErrInternal, err)
 		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Keep timing close to a wrong password.
@@ -161,7 +159,7 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Lo
 		AbsoluteExpiresAt: expiresAt,
 	})
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, fmt.Errorf("create session timeout: %w", err)
 		}
 		return nil, fmt.Errorf("%w: create session: %w", ErrInternal, err)
@@ -189,10 +187,6 @@ func (s *AuthService) Logout(ctx context.Context, cookie string) error {
 			Time:  time.Now().UTC(),
 			Valid: true,
 		},
-		RevokedReason: db.NullSessionRevokedReason{
-			SessionRevokedReason: db.SessionRevokedReasonLogout,
-			Valid:                true,
-		},
 		TokenHash: tokenHash,
 	})
 	if err != nil {
@@ -200,7 +194,7 @@ func (s *AuthService) Logout(ctx context.Context, cookie string) error {
 			return nil
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("revoke session: %w", err)
+			return fmt.Errorf("%w: revoke session: %w", ErrInternal, err)
 		}
 		return fmt.Errorf("%w: revoke session: %w", ErrInternal, err)
 	}
@@ -214,18 +208,62 @@ func (s *AuthService) LogoutAll(ctx context.Context, userID uuid.UUID) error {
 			Time:  time.Now().UTC(),
 			Valid: true,
 		},
-		RevokedReason: db.NullSessionRevokedReason{
-			SessionRevokedReason: db.SessionRevokedReasonLogout,
-			Valid:                true,
-		},
 		UserID: userID,
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("revoke all sessions: %w", err)
+			return fmt.Errorf("%w: revoke all sessions: %w", ErrInternal, err)
 		}
 		return fmt.Errorf("%w: revoke all sessions: %w", ErrInternal, err)
 	}
 
 	return nil
+}
+
+type SessionResult struct {
+	UserID uuid.UUID
+}
+
+func (s *AuthService) ValidateSession(ctx context.Context, cookie string) (*SessionResult, error) {
+	tokenHash, err := s.tokens.Hash(cookie)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidSession, err)
+	}
+
+	session, err := s.store.Queries.GetSession(ctx, tokenHash)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrInvalidSession
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("%w: validate session timeout: %w", ErrInternal, err)
+		}
+		return nil, fmt.Errorf("%w: validate session: %w", ErrInternal, err)
+	}
+
+	now := time.Now().UTC()
+	if !sessionIsActive(session, now, s.config.IdleTimeout) {
+		return nil, ErrInvalidSession
+	}
+
+	if !now.Before(session.LastSeenAt.Add(s.config.TouchInterval)) {
+		_, err = s.store.Queries.UpdateSessionActivity(ctx, db.UpdateSessionActivityParams{
+			LastSeenAt: now,
+			TokenHash:  tokenHash,
+		})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, ErrInvalidSession
+			}
+			return nil, fmt.Errorf("%w: update session activity: %w", ErrInternal, err)
+		}
+	}
+
+	return &SessionResult{UserID: session.UserID}, nil
+}
+
+func sessionIsActive(session db.Session, now time.Time, idleTimeout time.Duration) bool {
+	return !session.RevokedAt.Valid &&
+		now.Before(session.AbsoluteExpiresAt) &&
+		now.Before(session.LastSeenAt.Add(idleTimeout))
 }
