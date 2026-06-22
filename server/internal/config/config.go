@@ -5,6 +5,7 @@ import (
 	"lensamity/internal/storage"
 	"log"
 	"os"
+	"time"
 )
 
 type Config struct {
@@ -22,7 +23,14 @@ func Load() *Config {
 }
 
 func LoadAuth() auth.Config {
-	return auth.Config{}
+	return auth.Config{
+		SessionSecret:   required("SESSION_SECRET"),
+		IdleTimeout:     2 * 24 * time.Hour,
+		AbsoluteTimeout: 15 * 24 * time.Hour,
+		RenewalTimeout:  12 * time.Hour,
+		TouchInterval:   15 * time.Minute,
+		RenewalGrace:    10 * time.Second,
+	}
 }
 
 func LoadDB() string {

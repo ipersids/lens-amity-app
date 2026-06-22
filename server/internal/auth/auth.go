@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"lensamity/internal/db"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -16,7 +17,14 @@ import (
 // - NIST, SP 800-63B, authentication assurance: https://pages.nist.gov/800-63-4/sp800-63b.html
 // - Unicode, Technical Standard #39, https://www.unicode.org/reports/tr39/#Restriction_Level_Detection
 
-type Config struct{}
+type Config struct {
+	SessionSecret   string
+	IdleTimeout     time.Duration
+	AbsoluteTimeout time.Duration
+	RenewalTimeout  time.Duration
+	TouchInterval   time.Duration
+	RenewalGrace    time.Duration
+}
 
 type AuthService struct {
 	conf  *Config
