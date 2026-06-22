@@ -1,0 +1,29 @@
+-- +goose Up
+CREATE TABLE sessions (
+    token_hash BYTEA PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL,
+    last_seen_at TIMESTAMPTZ NOT NULL,
+    absolute_expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ
+);
+
+CREATE INDEX sessions_user_id_idx ON sessions(user_id);
+CREATE INDEX sessions_absolute_expires_at_idx ON sessions(absolute_expires_at);
+CREATE INDEX sessions_revoked_at_idx ON sessions(revoked_at) WHERE revoked_at IS NOT NULL;
+
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+SELECT cron.schedule(
+  'lensamity_cleanup_sessions',
+  '0 3 * * *',
+  $$
+    DELETE FROM sessions
+    WHERE absolute_expires_at <= now() - INTERVAL '3 days'
+       OR revoked_at <= now() - INTERVAL '3 days'
+  $$
+);
+
+-- +goose Down
+SELECT cron.unschedule('lensamity_cleanup_sessions');
+DROP TABLE sessions;

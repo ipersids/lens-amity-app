@@ -24,10 +24,10 @@ func Load() *Config {
 
 func LoadAuth() auth.Config {
 	return auth.Config{
-		JWTsecret:     required("JWT_SECRET"),
-		RefreshSecret: required("REFRESH_SECRET"),
-		JWTexpiry:     15 * time.Minute,
-		RefreshExpiry: 24 * time.Hour,
+		SessionSecret:   required("SESSION_SECRET"),
+		IdleTimeout:     2 * 24 * time.Hour,
+		AbsoluteTimeout: 15 * 24 * time.Hour,
+		TouchInterval:   15 * time.Minute,
 	}
 }
 

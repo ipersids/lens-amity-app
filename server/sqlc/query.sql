@@ -1,65 +1,72 @@
 -- name: GetPublicUserProfile :one
 SELECT username_key, username_display FROM users
-WHERE username_key = $1;
+WHERE username_key = sqlc.arg(username_key);
 
 -- name: CreateUser :one
 INSERT INTO users (
   username_key, username_display, password_hash
 ) VALUES (
-  $1, $2, $3
+  sqlc.arg(username_key),
+  sqlc.arg(username_display),
+  sqlc.arg(password_hash)
 )
 RETURNING username_key, username_display;
 
 -- name: UpdateUser :one
 UPDATE users
-  SET username_key = $2,
-  username_display = $3
-WHERE username_key = $1
+  SET username_key = sqlc.arg(username_key),
+  username_display = sqlc.arg(username_display)
+WHERE username_key = sqlc.arg(current_username_key)
 RETURNING username_key, username_display;
 
 -- name: DeleteUser :exec
 DELETE FROM users
-WHERE username_key = $1;
+WHERE username_key = sqlc.arg(username_key);
 
 -- name: GetFullUserDataByKey :one
 SELECT id, username_key, username_display, password_hash FROM users
-WHERE username_key = $1;
+WHERE username_key = sqlc.arg(username_key);
 
--- name: GetRefreshTokenForUpdate :one
-SELECT id, user_id, revoked, expires_at,
-  grace_period_until, revoked_reason
-FROM refresh_tokens
-WHERE id = $1 AND user_id = $2
-FOR UPDATE;
-
--- name: CreateNewRefreshToken :exec
-INSERT INTO refresh_tokens (
-  id, user_id, expires_at
+-- name: CreateSession :one
+INSERT INTO sessions (
+  token_hash, user_id, created_at, last_seen_at, absolute_expires_at
 ) VALUES (
-  $1, $2, $3
-);
+  sqlc.arg(token_hash),
+  sqlc.arg(user_id),
+  sqlc.arg(created_at),
+  sqlc.arg(last_seen_at),
+  sqlc.arg(absolute_expires_at)
+)
+RETURNING token_hash;
 
--- name: RotateRefreshToken :one
-UPDATE refresh_tokens
-    SET revoked = true,
-    revoked_at = now(),
-    revoked_reason = $1,
-    grace_period_until = $2
-WHERE id = $3 AND user_id = $4
-RETURNING id, revoked, revoked_reason, grace_period_until, revoked_at;
+-- name: GetSession :one
+SELECT
+  token_hash,
+  user_id,
+  created_at,
+  last_seen_at,
+  absolute_expires_at,
+  revoked_at
+FROM sessions
+WHERE token_hash = sqlc.arg(token_hash);
 
--- name: RevokeRefreshToken :one
-UPDATE refresh_tokens
-    SET revoked = true,
-    revoked_at = now(),
-    revoked_reason = $1
-WHERE id = $2 AND user_id = $3 AND revoked = false
-RETURNING id;
+-- name: UpdateSessionActivity :one
+UPDATE sessions
+  SET last_seen_at = sqlc.arg(last_seen_at)
+WHERE token_hash = sqlc.arg(token_hash)
+  AND revoked_at IS NULL
+  AND absolute_expires_at > sqlc.arg(last_seen_at)
+RETURNING token_hash, last_seen_at;
 
--- name: RevokeAllUserTokens :many
-UPDATE refresh_tokens
-    SET revoked = true,
-    revoked_at = now(),
-    revoked_reason = $1
-WHERE user_id = $2 AND revoked = false
-RETURNING id;
+-- name: RevokeSession :one
+UPDATE sessions
+  SET revoked_at = sqlc.arg(revoked_at)
+WHERE token_hash = sqlc.arg(token_hash)
+  AND revoked_at IS NULL
+RETURNING token_hash, revoked_at;
+
+-- name: RevokeAllSessions :exec
+UPDATE sessions
+  SET revoked_at = sqlc.arg(revoked_at)
+WHERE user_id = sqlc.arg(user_id)
+  AND revoked_at IS NULL;

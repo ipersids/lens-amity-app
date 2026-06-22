@@ -2,55 +2,70 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"lensamity/internal/auth"
+	"log/slog"
 	"net/http"
-	"strings"
-
-	"github.com/google/uuid"
+	"time"
 )
 
 type contextKey string
 
 const (
-	UserIDKey contextKey = "userID"
+	UserIDKey         contextKey = "userID"
+	SessionCookieName            = "session"
 )
 
-// Rejects requests if Authorization header is missing or JWT is invalid
+func SetSessionCookie(w http.ResponseWriter, token string, expiresAt time.Time) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     SessionCookieName,
+		Value:    token,
+		Path:     "/",
+		Expires:  expiresAt,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func ClearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     SessionCookieName,
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
 func StrictAuth(authService *auth.AuthService) func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				http.Error(w, "Authorization header required", http.StatusUnauthorized)
-				return
-			}
-
-			parts := strings.Split(authHeader, " ")
-			if len(parts) != 2 || parts[0] != "Bearer" {
-				http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
-				return
-			}
-
-			claims, err := authService.ValidateAccessToken(parts[1])
+			cookie, err := r.Cookie(SessionCookieName)
 			if err != nil {
-				http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+				ClearSessionCookie(w)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 
-			userIDStr, err := claims.GetSubject()
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+
+			session, err := authService.ValidateSession(ctx, cookie.Value)
 			if err != nil {
-				http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
-				return
-			}
-			userID, err := uuid.Parse(userIDStr)
-			if err != nil {
-				http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+				if errors.Is(err, auth.ErrInvalidSession) {
+					ClearSessionCookie(w)
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					return
+				}
+				slog.Error("session validation failed", "error", err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), UserIDKey, userID)
-
-			next.ServeHTTP(w, r.WithContext(ctx))
+			requestCtx := context.WithValue(r.Context(), UserIDKey, session.UserID)
+			next.ServeHTTP(w, r.WithContext(requestCtx))
 		}
 	}
 }

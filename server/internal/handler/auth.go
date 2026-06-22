@@ -13,13 +13,20 @@ import (
 	"github.com/google/uuid"
 )
 
-type AuthHandler struct {
-	authService *auth.AuthService
+type authService interface {
+	Signup(context.Context, string, string, string) (*auth.SignupResponse, error)
+	Login(context.Context, string, string) (*auth.LoginResult, error)
+	Logout(context.Context, string) error
+	LogoutAll(context.Context, uuid.UUID) error
 }
 
-func NewAuthHandler(authService *auth.AuthService) *AuthHandler {
+type AuthHandler struct {
+	authService authService
+}
+
+func NewAuthHandler(service authService) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
+		authService: service,
 	}
 }
 
@@ -44,13 +51,12 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
-		slog.Error("failed to decode SignupRequest", "error", err)
-		http.Error(w, "malformed JSON", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed JSON")
 		return
 	}
 
 	if req.Username == "" || req.Password == "" {
-		http.Error(w, "invalid credentials", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "invalid_signup", "username and password are required")
 		return
 	}
 
@@ -61,15 +67,21 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	user, err := h.authService.Signup(ctx, req.Username, req.DisplayName, req.Password)
 
 	if err != nil {
-		if errors.Is(err, auth.ErrInvalidCredentials) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		if errors.Is(err, auth.ErrUsernameTaken) {
+			WriteError(w, http.StatusConflict, "username_taken", "username is not available")
 			return
 		}
-		slog.Error("Signup: request failed", "error", err)
-		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, auth.ErrInternal) {
+			slog.Error("Signup: request failed", "error", err)
+			WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
+			return
+		}
+		WriteError(w, http.StatusBadRequest, "invalid_signup", err.Error())
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 	err = json.NewEncoder(w).Encode(SignupResponse{Username: user.UsernameKey, DisplayName: user.UsernameDisplay})
 
 	if err != nil {
@@ -83,10 +95,8 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-	Username     string `json:"username"`
-	DisplayName  string `json:"displayName"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -97,13 +107,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
-		slog.Error("failed to decode LoginRequest", "error", err)
-		http.Error(w, "malformed JSON", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed JSON")
 		return
 	}
 
 	if req.Username == "" || req.Password == "" {
-		http.Error(w, "invalid credentials", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "invalid_request", "username and password are required")
 		return
 	}
 
@@ -113,20 +122,20 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.authService.Login(ctx, req.Username, req.Password)
 	if err != nil {
-		slog.Error("Login request failed", "error", err)
-		if errors.Is(err, context.DeadlineExceeded) {
-			http.Error(w, "Database timeout exceeded", http.StatusGatewayTimeout)
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			WriteError(w, http.StatusUnauthorized, "invalid_credentials", "")
 			return
 		}
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		slog.Error("Login request failed", "error", err)
+		WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
 		return
 	}
 
+	middleware.SetSessionCookie(w, user.CookieToken, user.CookieExpiredAt)
+	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(LoginResponse{
-		AccessToken:  user.AccessToken,
-		RefreshToken: user.RefreshToken,
-		Username:     user.Username,
-		DisplayName:  user.DisplayName,
+		Username:    user.Username,
+		DisplayName: user.DisplayName,
 	})
 
 	if err != nil {
@@ -134,100 +143,38 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type RefreshRequest struct {
-	RefreshToken string `json:"refreshToken"`
-}
-
-type RefreshResponse struct {
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-}
-
-func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
-
-	var req RefreshRequest
-
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		slog.Error("failed to decode RefreshRequest", "error", err)
-		http.Error(w, "malformed request body", http.StatusBadRequest)
-		return
-	}
-
-	if req.RefreshToken == "" {
-		http.Error(w, "malformed request body", http.StatusBadRequest)
-		return
-	}
-
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	refreshed, err := h.authService.Refresh(ctx, req.RefreshToken)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			http.Error(w, "timeout exceeded", http.StatusGatewayTimeout)
-			return
-		}
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
-		return
-	}
-
-	if refreshed.Replayed {
+	cookie, err := r.Cookie(middleware.SessionCookieName)
+	if errors.Is(err, http.ErrNoCookie) {
+		middleware.ClearSessionCookie(w)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-
-	err = json.NewEncoder(w).Encode(RefreshResponse{AccessToken: refreshed.AccessToken, RefreshToken: refreshed.RefreshToken})
-
 	if err != nil {
-		slog.Error("Refresh: failed encode response", "error", err)
-	}
-}
-
-type LogoutRequest struct {
-	RefreshToken string `json:"refreshToken"`
-}
-
-func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
-
-	var req RefreshRequest
-
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		slog.Error("failed to decode LogoutRequest", "error", err)
-		http.Error(w, "malformed request body", http.StatusBadRequest)
+		middleware.ClearSessionCookie(w)
+		WriteError(w, http.StatusBadRequest, "invalid_cookie", "invalid session cookie")
 		return
 	}
 
-	if req.RefreshToken == "" {
-		http.Error(w, "malformed request body", http.StatusBadRequest)
-		return
-	}
-
-	ctx := r.Context()
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	err := h.authService.Logout(ctx, req.RefreshToken)
+	err = h.authService.Logout(ctx, cookie.Value)
 	if err != nil {
-		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		slog.Error("Logout request failed", "error", err)
+		WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
 		return
 	}
 
+	middleware.ClearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
-
 	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
 		return
 	}
 
@@ -237,9 +184,18 @@ func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 
 	err := h.authService.LogoutAll(ctx, userID)
 	if err != nil {
-		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		slog.Error("LogoutAll request failed", "error", err)
+		WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
 		return
 	}
 
+	middleware.ClearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func statusForAuthError(err error) int {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return http.StatusGatewayTimeout
+	}
+	return http.StatusInternalServerError
 }

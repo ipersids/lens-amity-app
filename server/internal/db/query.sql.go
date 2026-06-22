@@ -13,30 +13,47 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createNewRefreshToken = `-- name: CreateNewRefreshToken :exec
-INSERT INTO refresh_tokens (
-  id, user_id, expires_at
+const createSession = `-- name: CreateSession :one
+INSERT INTO sessions (
+  token_hash, user_id, created_at, last_seen_at, absolute_expires_at
 ) VALUES (
-  $1, $2, $3
+  $1,
+  $2,
+  $3,
+  $4,
+  $5
 )
+RETURNING token_hash
 `
 
-type CreateNewRefreshTokenParams struct {
-	ID        uuid.UUID
-	UserID    uuid.UUID
-	ExpiresAt time.Time
+type CreateSessionParams struct {
+	TokenHash         []byte
+	UserID            uuid.UUID
+	CreatedAt         time.Time
+	LastSeenAt        time.Time
+	AbsoluteExpiresAt time.Time
 }
 
-func (q *Queries) CreateNewRefreshToken(ctx context.Context, arg CreateNewRefreshTokenParams) error {
-	_, err := q.db.Exec(ctx, createNewRefreshToken, arg.ID, arg.UserID, arg.ExpiresAt)
-	return err
+func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, createSession,
+		arg.TokenHash,
+		arg.UserID,
+		arg.CreatedAt,
+		arg.LastSeenAt,
+		arg.AbsoluteExpiresAt,
+	)
+	var token_hash []byte
+	err := row.Scan(&token_hash)
+	return token_hash, err
 }
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (
   username_key, username_display, password_hash
 ) VALUES (
-  $1, $2, $3
+  $1,
+  $2,
+  $3
 )
 RETURNING username_key, username_display
 `
@@ -110,153 +127,112 @@ func (q *Queries) GetPublicUserProfile(ctx context.Context, usernameKey string) 
 	return i, err
 }
 
-const getRefreshTokenForUpdate = `-- name: GetRefreshTokenForUpdate :one
-SELECT id, user_id, revoked, expires_at,
-  grace_period_until, revoked_reason
-FROM refresh_tokens
-WHERE id = $1 AND user_id = $2
-FOR UPDATE
+const getSession = `-- name: GetSession :one
+SELECT
+  token_hash,
+  user_id,
+  created_at,
+  last_seen_at,
+  absolute_expires_at,
+  revoked_at
+FROM sessions
+WHERE token_hash = $1
 `
 
-type GetRefreshTokenForUpdateParams struct {
-	ID     uuid.UUID
-	UserID uuid.UUID
-}
-
-type GetRefreshTokenForUpdateRow struct {
-	ID               uuid.UUID
-	UserID           uuid.UUID
-	Revoked          bool
-	ExpiresAt        time.Time
-	GracePeriodUntil pgtype.Timestamptz
-	RevokedReason    NullTokenRevokedReason
-}
-
-func (q *Queries) GetRefreshTokenForUpdate(ctx context.Context, arg GetRefreshTokenForUpdateParams) (GetRefreshTokenForUpdateRow, error) {
-	row := q.db.QueryRow(ctx, getRefreshTokenForUpdate, arg.ID, arg.UserID)
-	var i GetRefreshTokenForUpdateRow
+func (q *Queries) GetSession(ctx context.Context, tokenHash []byte) (Session, error) {
+	row := q.db.QueryRow(ctx, getSession, tokenHash)
+	var i Session
 	err := row.Scan(
-		&i.ID,
+		&i.TokenHash,
 		&i.UserID,
-		&i.Revoked,
-		&i.ExpiresAt,
-		&i.GracePeriodUntil,
-		&i.RevokedReason,
-	)
-	return i, err
-}
-
-const revokeAllUserTokens = `-- name: RevokeAllUserTokens :many
-UPDATE refresh_tokens
-    SET revoked = true,
-    revoked_at = now(),
-    revoked_reason = $1
-WHERE user_id = $2 AND revoked = false
-RETURNING id
-`
-
-type RevokeAllUserTokensParams struct {
-	RevokedReason NullTokenRevokedReason
-	UserID        uuid.UUID
-}
-
-func (q *Queries) RevokeAllUserTokens(ctx context.Context, arg RevokeAllUserTokensParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, revokeAllUserTokens, arg.RevokedReason, arg.UserID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []uuid.UUID
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const revokeRefreshToken = `-- name: RevokeRefreshToken :one
-UPDATE refresh_tokens
-    SET revoked = true,
-    revoked_at = now(),
-    revoked_reason = $1
-WHERE id = $2 AND user_id = $3 AND revoked = false
-RETURNING id
-`
-
-type RevokeRefreshTokenParams struct {
-	RevokedReason NullTokenRevokedReason
-	ID            uuid.UUID
-	UserID        uuid.UUID
-}
-
-func (q *Queries) RevokeRefreshToken(ctx context.Context, arg RevokeRefreshTokenParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, revokeRefreshToken, arg.RevokedReason, arg.ID, arg.UserID)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
-}
-
-const rotateRefreshToken = `-- name: RotateRefreshToken :one
-UPDATE refresh_tokens
-    SET revoked = true,
-    revoked_at = now(),
-    revoked_reason = $1,
-    grace_period_until = $2
-WHERE id = $3 AND user_id = $4
-RETURNING id, revoked, revoked_reason, grace_period_until, revoked_at
-`
-
-type RotateRefreshTokenParams struct {
-	RevokedReason    NullTokenRevokedReason
-	GracePeriodUntil pgtype.Timestamptz
-	ID               uuid.UUID
-	UserID           uuid.UUID
-}
-
-type RotateRefreshTokenRow struct {
-	ID               uuid.UUID
-	Revoked          bool
-	RevokedReason    NullTokenRevokedReason
-	GracePeriodUntil pgtype.Timestamptz
-	RevokedAt        pgtype.Timestamptz
-}
-
-func (q *Queries) RotateRefreshToken(ctx context.Context, arg RotateRefreshTokenParams) (RotateRefreshTokenRow, error) {
-	row := q.db.QueryRow(ctx, rotateRefreshToken,
-		arg.RevokedReason,
-		arg.GracePeriodUntil,
-		arg.ID,
-		arg.UserID,
-	)
-	var i RotateRefreshTokenRow
-	err := row.Scan(
-		&i.ID,
-		&i.Revoked,
-		&i.RevokedReason,
-		&i.GracePeriodUntil,
+		&i.CreatedAt,
+		&i.LastSeenAt,
+		&i.AbsoluteExpiresAt,
 		&i.RevokedAt,
 	)
 	return i, err
 }
 
+const revokeAllSessions = `-- name: RevokeAllSessions :exec
+UPDATE sessions
+  SET revoked_at = $1
+WHERE user_id = $2
+  AND revoked_at IS NULL
+`
+
+type RevokeAllSessionsParams struct {
+	RevokedAt pgtype.Timestamptz
+	UserID    uuid.UUID
+}
+
+func (q *Queries) RevokeAllSessions(ctx context.Context, arg RevokeAllSessionsParams) error {
+	_, err := q.db.Exec(ctx, revokeAllSessions, arg.RevokedAt, arg.UserID)
+	return err
+}
+
+const revokeSession = `-- name: RevokeSession :one
+UPDATE sessions
+  SET revoked_at = $1
+WHERE token_hash = $2
+  AND revoked_at IS NULL
+RETURNING token_hash, revoked_at
+`
+
+type RevokeSessionParams struct {
+	RevokedAt pgtype.Timestamptz
+	TokenHash []byte
+}
+
+type RevokeSessionRow struct {
+	TokenHash []byte
+	RevokedAt pgtype.Timestamptz
+}
+
+func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) (RevokeSessionRow, error) {
+	row := q.db.QueryRow(ctx, revokeSession, arg.RevokedAt, arg.TokenHash)
+	var i RevokeSessionRow
+	err := row.Scan(&i.TokenHash, &i.RevokedAt)
+	return i, err
+}
+
+const updateSessionActivity = `-- name: UpdateSessionActivity :one
+UPDATE sessions
+  SET last_seen_at = $1
+WHERE token_hash = $2
+  AND revoked_at IS NULL
+  AND absolute_expires_at > $1
+RETURNING token_hash, last_seen_at
+`
+
+type UpdateSessionActivityParams struct {
+	LastSeenAt time.Time
+	TokenHash  []byte
+}
+
+type UpdateSessionActivityRow struct {
+	TokenHash  []byte
+	LastSeenAt time.Time
+}
+
+func (q *Queries) UpdateSessionActivity(ctx context.Context, arg UpdateSessionActivityParams) (UpdateSessionActivityRow, error) {
+	row := q.db.QueryRow(ctx, updateSessionActivity, arg.LastSeenAt, arg.TokenHash)
+	var i UpdateSessionActivityRow
+	err := row.Scan(&i.TokenHash, &i.LastSeenAt)
+	return i, err
+}
+
 const updateUser = `-- name: UpdateUser :one
 UPDATE users
-  SET username_key = $2,
-  username_display = $3
-WHERE username_key = $1
+  SET username_key = $1,
+  username_display = $2
+WHERE username_key = $3
 RETURNING username_key, username_display
 `
 
 type UpdateUserParams struct {
-	UsernameKey     string
-	UsernameKey_2   string
-	UsernameDisplay string
+	UsernameKey        string
+	UsernameDisplay    string
+	CurrentUsernameKey string
 }
 
 type UpdateUserRow struct {
@@ -265,7 +241,7 @@ type UpdateUserRow struct {
 }
 
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error) {
-	row := q.db.QueryRow(ctx, updateUser, arg.UsernameKey, arg.UsernameKey_2, arg.UsernameDisplay)
+	row := q.db.QueryRow(ctx, updateUser, arg.UsernameKey, arg.UsernameDisplay, arg.CurrentUsernameKey)
 	var i UpdateUserRow
 	err := row.Scan(&i.UsernameKey, &i.UsernameDisplay)
 	return i, err
