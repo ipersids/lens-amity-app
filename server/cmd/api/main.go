@@ -8,6 +8,7 @@ import (
 	"lensamity/internal/handler"
 	"lensamity/internal/middleware"
 	"lensamity/internal/storage"
+	"lensamity/internal/users"
 	"log/slog"
 	"net/http"
 	"os"
@@ -70,7 +71,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	userService, err := auth.NewUserService(store)
+	userService, err := users.NewUserService(store)
 	if err != nil {
 		slog.Error("user service initialisation failed", "error", err)
 		os.Exit(1)
