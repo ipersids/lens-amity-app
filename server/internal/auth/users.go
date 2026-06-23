@@ -11,10 +11,14 @@ type UserService struct {
 	store *db.Store
 }
 
-func NewUserService(s *db.Store) *UserService {
+func NewUserService(s *db.Store) (*UserService, error) {
+	if s == nil {
+		return nil, errors.New("users: nil store")
+	}
+
 	return &UserService{
 		store: s,
-	}
+	}, nil
 }
 
 var (

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -14,7 +15,7 @@ type Config struct {
 	SecretAccessKey  string
 	InternalEndpoint string
 	UsePathStyle     bool
-	Backet           string
+	Bucket           string
 }
 
 type Client struct {
@@ -23,7 +24,23 @@ type Client struct {
 	presign *s3.PresignClient
 }
 
-func NewS3Client(c *Config) (*Client, error) {
+func NewS3Client(c Config) (*Client, error) {
+	if strings.TrimSpace(c.Region) == "" {
+		return nil, errors.New("storage: region is required")
+	}
+	if strings.TrimSpace(c.AccessKeyID) == "" {
+		return nil, errors.New("storage: access key id is required")
+	}
+	if strings.TrimSpace(c.SecretAccessKey) == "" {
+		return nil, errors.New("storage: secret access key is required")
+	}
+	if strings.TrimSpace(c.InternalEndpoint) == "" {
+		return nil, errors.New("storage: internal endpoint is required")
+	}
+	if strings.TrimSpace(c.Bucket) == "" {
+		return nil, errors.New("storage: bucket is required")
+	}
+
 	// build aws.Config
 	cfg := aws.Config{
 		Region:       c.Region,
@@ -48,7 +65,7 @@ func NewS3Client(c *Config) (*Client, error) {
 	}
 
 	return &Client{
-		bucket:  c.Backet,
+		bucket:  c.Bucket,
 		s3:      client,
 		presign: presignClient,
 	}, nil

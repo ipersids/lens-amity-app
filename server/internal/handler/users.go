@@ -14,10 +14,14 @@ type UserHandler struct {
 	userService *auth.UserService
 }
 
-func NewUserHandler(userService *auth.UserService) *UserHandler {
+func NewUserHandler(userService *auth.UserService) (*UserHandler, error) {
+	if userService == nil {
+		return nil, errors.New("handler: nil user service")
+	}
+
 	return &UserHandler{
 		userService: userService,
-	}
+	}, nil
 }
 
 type GetUserProfileResponse struct {

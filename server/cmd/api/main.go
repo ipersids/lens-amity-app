@@ -7,6 +7,7 @@ import (
 	"lensamity/internal/db"
 	"lensamity/internal/handler"
 	"lensamity/internal/middleware"
+	"lensamity/internal/storage"
 	"log/slog"
 	"net/http"
 	"os"
@@ -41,7 +42,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	conf := config.Load()
+	conf, err := config.Load()
+	if err != nil {
+		slog.Error("Loading envirenment failed", "error", err)
+		os.Exit(1)
+	}
 
 	store, err := db.NewStore(ctx, conf.DatabaseURL)
 	if err != nil {
@@ -50,20 +55,42 @@ func main() {
 	}
 	defer store.Close()
 
-	// storage, err := storage.NewS3Client(&conf.S3)
-	// if err != nil {
-	// 	slog.Error("S3 storage initialisation failed", "error", err)
-	// 	os.Exit(1)
-	// }
+	storage, err := storage.NewS3Client(conf.S3)
+	if err != nil {
+		slog.Error("S3 storage initialisation failed", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("S3 storage created", "storage", storage)
 
 	mux := http.NewServeMux()
 
-	authService := auth.NewAuthService(store, &conf.Auth)
-	userService := auth.NewUserService(store)
+	authService, err := auth.NewAuthService(store, conf.SessionSecret)
+	if err != nil {
+		slog.Error("auth service initialisation failed", "error", err)
+		os.Exit(1)
+	}
+
+	userService, err := auth.NewUserService(store)
+	if err != nil {
+		slog.Error("user service initialisation failed", "error", err)
+		os.Exit(1)
+	}
+
+	authHandler, err := handler.NewAuthHandler(authService)
+	if err != nil {
+		slog.Error("auth handler initialisation failed", "error", err)
+		os.Exit(1)
+	}
+
+	userHandler, err := handler.NewUserHandler(userService)
+	if err != nil {
+		slog.Error("user handler initialisation failed", "error", err)
+		os.Exit(1)
+	}
 
 	h := handlers{
-		auth: handler.NewAuthHandler(authService),
-		user: handler.NewUserHandler(userService),
+		auth: authHandler,
+		user: userHandler,
 	}
 
 	h.registerRoutes(mux, middleware.StrictAuth(authService))

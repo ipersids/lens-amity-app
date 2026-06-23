@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"lensamity/internal/db"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,24 +22,34 @@ import (
 // Idle timeout: compare now() with last_seen_at.
 // Absolute timeout: compare now() with absolute_expires_at.
 type Config struct {
-	SessionSecret   string
 	IdleTimeout     time.Duration
 	AbsoluteTimeout time.Duration
 	TouchInterval   time.Duration
 }
 
 type AuthService struct {
-	config *Config
+	config Config
 	store  *db.Store
-	tokens *sessionTokens
+	tokens sessionTokens
 }
 
-func NewAuthService(store *db.Store, confAuth *Config) *AuthService {
-	return &AuthService{
-		config: confAuth,
-		store:  store,
-		tokens: newSessionTokens(confAuth.SessionSecret),
+func NewAuthService(store *db.Store, sessionSecret string) (*AuthService, error) {
+	if store == nil {
+		return nil, errors.New("auth: nil store")
 	}
+	if strings.TrimSpace(sessionSecret) == "" {
+		return nil, errors.New("auth: session secret is required")
+	}
+
+	return &AuthService{
+		config: Config{
+			IdleTimeout:     36 * time.Hour,
+			AbsoluteTimeout: 7 * 24 * time.Hour,
+			TouchInterval:   15 * time.Minute,
+		},
+		store:  store,
+		tokens: newSessionTokens(sessionSecret),
+	}, nil
 }
 
 var (
