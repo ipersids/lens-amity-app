@@ -70,6 +70,11 @@ func LoadS3() (storage.Config, error) {
 		return storage.Config{}, err
 	}
 
+	publicEndpoint, err := required("S3_PUBLIC_ENDPOINT")
+	if err != nil {
+		return storage.Config{}, err
+	}
+
 	bucket, err := required("S3_BUCKET")
 	if err != nil {
 		return storage.Config{}, err
@@ -85,6 +90,7 @@ func LoadS3() (storage.Config, error) {
 		AccessKeyID:      accessID,
 		SecretAccessKey:  secretAccess,
 		InternalEndpoint: internalEndpoint,
+		PublicEndpoint:   publicEndpoint,
 		Bucket:           bucket,
 		UsePathStyle:     pathStyle,
 	}, nil

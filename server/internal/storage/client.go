@@ -14,6 +14,7 @@ type Config struct {
 	AccessKeyID      string
 	SecretAccessKey  string
 	InternalEndpoint string
+	PublicEndpoint   string
 	UsePathStyle     bool
 	Bucket           string
 }
@@ -25,20 +26,8 @@ type Client struct {
 }
 
 func NewS3Client(c Config) (*Client, error) {
-	if strings.TrimSpace(c.Region) == "" {
-		return nil, errors.New("storage: region is required")
-	}
-	if strings.TrimSpace(c.AccessKeyID) == "" {
-		return nil, errors.New("storage: access key id is required")
-	}
-	if strings.TrimSpace(c.SecretAccessKey) == "" {
-		return nil, errors.New("storage: secret access key is required")
-	}
-	if strings.TrimSpace(c.InternalEndpoint) == "" {
-		return nil, errors.New("storage: internal endpoint is required")
-	}
-	if strings.TrimSpace(c.Bucket) == "" {
-		return nil, errors.New("storage: bucket is required")
+	if err := c.validate(); err != nil {
+		return nil, err
 	}
 
 	// build aws.Config
@@ -69,4 +58,26 @@ func NewS3Client(c Config) (*Client, error) {
 		s3:      client,
 		presign: presignClient,
 	}, nil
+}
+
+func (c Config) validate() error {
+	if strings.TrimSpace(c.Region) == "" {
+		return errors.New("storage: region is required")
+	}
+	if strings.TrimSpace(c.AccessKeyID) == "" {
+		return errors.New("storage: access key id is required")
+	}
+	if strings.TrimSpace(c.SecretAccessKey) == "" {
+		return errors.New("storage: secret access key is required")
+	}
+	if strings.TrimSpace(c.InternalEndpoint) == "" {
+		return errors.New("storage: internal endpoint is required")
+	}
+	if strings.TrimSpace(c.PublicEndpoint) == "" {
+		return errors.New("storage: public endpoint is required")
+	}
+	if strings.TrimSpace(c.Bucket) == "" {
+		return errors.New("storage: bucket is required")
+	}
+	return nil
 }
