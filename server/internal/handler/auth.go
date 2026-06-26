@@ -39,8 +39,6 @@ func NewAuthHandler(service authService) (*AuthHandler, error) {
 	}, nil
 }
 
-const maxAuthBodyBytes = 8 * 1024 // 8 KiB
-
 type SignupRequest struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"displayName"`

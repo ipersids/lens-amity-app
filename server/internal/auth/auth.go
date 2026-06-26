@@ -56,7 +56,7 @@ var (
 	ErrUsernameTaken      = errors.New("username is not available")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidSession     = errors.New("invalid session")
-	ErrInternal           = errors.New("internal auth error")
+	ErrInternal           = errors.New("internal error")
 )
 
 const (

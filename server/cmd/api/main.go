@@ -7,6 +7,7 @@ import (
 	"lensamity/internal/db"
 	"lensamity/internal/handler"
 	"lensamity/internal/middleware"
+	"lensamity/internal/photo"
 	"lensamity/internal/storage"
 	"lensamity/internal/users"
 	"log/slog"
@@ -18,8 +19,9 @@ import (
 )
 
 type handlers struct {
-	auth *handler.AuthHandler
-	user *handler.UserHandler
+	auth  *handler.AuthHandler
+	user  *handler.UserHandler
+	photo *handler.PhotoHandler
 }
 
 func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware func(http.HandlerFunc) http.HandlerFunc) {
@@ -34,6 +36,8 @@ func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware fun
 	mux.HandleFunc("GET /api/users/{username}", authRequiredMiddleware(h.user.GetUserProfile))
 
 	// 3. Strict Session Protected routes
+	mux.HandleFunc("POST /api/photos/upload-intent", authRequiredMiddleware(h.photo.UploadIntent))
+
 	// mux.Handle("GET /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.GetMyProfile)))
 	// mux.Handle("PATCH /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.UpdateMyProfile)))
 	// mux.Handle("DELETE /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.DeleteMyProfile)))
@@ -61,7 +65,6 @@ func main() {
 		slog.Error("S3 storage initialisation failed", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("S3 storage created", "storage", storage)
 
 	mux := http.NewServeMux()
 
@@ -77,6 +80,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	photoService, err := photo.NewPhotoService(store, storage)
+	if err != nil {
+		slog.Error("photo service initialisation failed", "error", err)
+		os.Exit(1)
+	}
+
 	authHandler, err := handler.NewAuthHandler(authService)
 	if err != nil {
 		slog.Error("auth handler initialisation failed", "error", err)
@@ -89,9 +98,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	photoHandler, err := handler.NewPhotoHandler(photoService)
+	if err != nil {
+		slog.Error("photo handler initialisation failed", "error", err)
+		os.Exit(1)
+	}
+
 	h := handlers{
-		auth: authHandler,
-		user: userHandler,
+		auth:  authHandler,
+		user:  userHandler,
+		photo: photoHandler,
 	}
 
 	h.registerRoutes(mux, middleware.StrictAuth(authService))

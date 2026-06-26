@@ -5,11 +5,69 @@
 package db
 
 import (
+	"database/sql/driver"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type PhotoProcessingStatus string
+
+const (
+	PhotoProcessingStatusPending PhotoProcessingStatus = "pending"
+	PhotoProcessingStatusReady   PhotoProcessingStatus = "ready"
+	PhotoProcessingStatusFailed  PhotoProcessingStatus = "failed"
+)
+
+func (e *PhotoProcessingStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PhotoProcessingStatus(s)
+	case string:
+		*e = PhotoProcessingStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PhotoProcessingStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPhotoProcessingStatus struct {
+	PhotoProcessingStatus PhotoProcessingStatus
+	Valid                 bool // Valid is true if PhotoProcessingStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPhotoProcessingStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PhotoProcessingStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PhotoProcessingStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPhotoProcessingStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PhotoProcessingStatus), nil
+}
+
+type Photo struct {
+	ID              uuid.UUID
+	OwnerUserID     uuid.UUID
+	Bucket          string
+	ObjectKey       string
+	LocalDate       pgtype.Date
+	Status          PhotoProcessingStatus
+	UploadExpiresAt time.Time
+	UploadedAt      pgtype.Timestamptz
+	CreatedAt       time.Time
+	DeletedAt       pgtype.Timestamptz
+}
 
 type Session struct {
 	TokenHash         []byte
