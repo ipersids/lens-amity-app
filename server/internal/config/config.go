@@ -1,57 +1,107 @@
 package config
 
 import (
-	"lensamity/internal/auth"
+	"fmt"
 	"lensamity/internal/storage"
-	"log"
 	"os"
-	"time"
+	"strconv"
 )
 
 type Config struct {
-	Auth        auth.Config
-	DatabaseURL string
-	S3          storage.Config
+	SessionSecret string
+	DatabaseURL   string
+	S3            storage.Config
 }
 
-func Load() *Config {
-	return &Config{
-		Auth:        LoadAuth(),
-		DatabaseURL: LoadDB(),
-		S3:          LoadS3(),
+func Load() (Config, error) {
+	secret, err := LoadAuth()
+	if err != nil {
+		return Config{}, err
 	}
-}
 
-func LoadAuth() auth.Config {
-	return auth.Config{
-		SessionSecret:   required("SESSION_SECRET"),
-		IdleTimeout:     2 * 24 * time.Hour,
-		AbsoluteTimeout: 15 * 24 * time.Hour,
-		TouchInterval:   15 * time.Minute,
+	dbURL, err := LoadDB()
+	if err != nil {
+		return Config{}, err
 	}
+
+	confS3, err := LoadS3()
+	if err != nil {
+		return Config{}, err
+	}
+
+	return Config{
+		SessionSecret: secret,
+		DatabaseURL:   dbURL,
+		S3:            confS3,
+	}, nil
 }
 
-func LoadDB() string {
+func LoadAuth() (string, error) {
+	secret, err := required("SESSION_SECRET")
+	if err != nil {
+		return "", err
+	}
+
+	return secret, nil
+}
+
+func LoadDB() (string, error) {
 	return required("DATABASE_URL")
 }
 
-func LoadS3() storage.Config {
-	return storage.Config{
-		Region:           required("S3_REGION"),
-		AccessKeyID:      required("S3_ACCESS_KEY_ID"),
-		SecretAccessKey:  required("S3_SECRET_ACCESS_KEY"),
-		InternalEndpoint: required("S3_INTERNAL_ENDPOINT"),
-		Backet:           required("S3_BUCKET"),
-		UsePathStyle:     withDefault("S3_FORCE_PATH_STYLE", "true") != "false",
+func LoadS3() (storage.Config, error) {
+	region, err := required("S3_REGION")
+	if err != nil {
+		return storage.Config{}, err
 	}
+
+	accessID, err := required("S3_ACCESS_KEY_ID")
+	if err != nil {
+		return storage.Config{}, err
+	}
+
+	secretAccess, err := required("S3_SECRET_ACCESS_KEY")
+	if err != nil {
+		return storage.Config{}, err
+	}
+
+	internalEndpoint, err := required("S3_INTERNAL_ENDPOINT")
+	if err != nil {
+		return storage.Config{}, err
+	}
+
+	publicEndpoint, err := required("S3_PUBLIC_ENDPOINT")
+	if err != nil {
+		return storage.Config{}, err
+	}
+
+	bucket, err := required("S3_BUCKET")
+	if err != nil {
+		return storage.Config{}, err
+	}
+
+	pathStyle, err := strconv.ParseBool(withDefault("S3_FORCE_PATH_STYLE", "true"))
+	if err != nil {
+		return storage.Config{}, err
+	}
+
+	return storage.Config{
+		Region:           region,
+		AccessKeyID:      accessID,
+		SecretAccessKey:  secretAccess,
+		InternalEndpoint: internalEndpoint,
+		PublicEndpoint:   publicEndpoint,
+		Bucket:           bucket,
+		UsePathStyle:     pathStyle,
+	}, nil
 }
 
-func required(key string) string {
+func required(key string) (string, error) {
 	val := os.Getenv(key)
 	if val == "" {
-		log.Fatalf("required environment variable %s doesn't exist", key)
+		return "", fmt.Errorf("required environment variable %s doesn't exist", key)
 	}
-	return val
+	return val, nil
 }
 
 func withDefault(key, defaultKey string) string {

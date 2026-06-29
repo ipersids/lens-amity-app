@@ -3,7 +3,9 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,6 +17,13 @@ type Store struct {
 }
 
 func NewStore(ctx context.Context, dbURL string) (*Store, error) {
+	if ctx == nil {
+		return nil, errors.New("db: nil context")
+	}
+	if strings.TrimSpace(dbURL) == "" {
+		return nil, errors.New("db: database url is required")
+	}
+
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pool: %w", err)

@@ -8,6 +8,7 @@ import (
 	"lensamity/internal/middleware"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,13 +25,19 @@ type AuthHandler struct {
 	authService authService
 }
 
-func NewAuthHandler(service authService) *AuthHandler {
+func NewAuthHandler(service authService) (*AuthHandler, error) {
+	if service == nil {
+		return nil, errors.New("handler: nil auth service")
+	}
+	v := reflect.ValueOf(service)
+	if v.Kind() == reflect.Ptr && v.IsNil() {
+		return nil, errors.New("handler: nil auth service")
+	}
+
 	return &AuthHandler{
 		authService: service,
-	}
+	}, nil
 }
-
-const maxAuthBodyBytes = 8 * 1024 // 8 KiB
 
 type SignupRequest struct {
 	Username    string `json:"username"`

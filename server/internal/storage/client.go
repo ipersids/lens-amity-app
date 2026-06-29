@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -13,17 +14,22 @@ type Config struct {
 	AccessKeyID      string
 	SecretAccessKey  string
 	InternalEndpoint string
+	PublicEndpoint   string
 	UsePathStyle     bool
-	Backet           string
+	Bucket           string
 }
 
 type Client struct {
-	bucket  string
-	s3      *s3.Client
-	presign *s3.PresignClient
+	Bucket  string
+	Client  *s3.Client
+	Presign *s3.PresignClient
 }
 
-func NewS3Client(c *Config) (*Client, error) {
+func NewS3Client(c Config) (*Client, error) {
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
+
 	// build aws.Config
 	cfg := aws.Config{
 		Region:       c.Region,
@@ -48,8 +54,30 @@ func NewS3Client(c *Config) (*Client, error) {
 	}
 
 	return &Client{
-		bucket:  c.Backet,
-		s3:      client,
-		presign: presignClient,
+		Bucket:  c.Bucket,
+		Client:  client,
+		Presign: presignClient,
 	}, nil
+}
+
+func (c Config) validate() error {
+	if strings.TrimSpace(c.Region) == "" {
+		return errors.New("storage: region is required")
+	}
+	if strings.TrimSpace(c.AccessKeyID) == "" {
+		return errors.New("storage: access key id is required")
+	}
+	if strings.TrimSpace(c.SecretAccessKey) == "" {
+		return errors.New("storage: secret access key is required")
+	}
+	if strings.TrimSpace(c.InternalEndpoint) == "" {
+		return errors.New("storage: internal endpoint is required")
+	}
+	if strings.TrimSpace(c.PublicEndpoint) == "" {
+		return errors.New("storage: public endpoint is required")
+	}
+	if strings.TrimSpace(c.Bucket) == "" {
+		return errors.New("storage: bucket is required")
+	}
+	return nil
 }

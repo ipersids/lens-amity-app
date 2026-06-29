@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"lensamity/internal/config"
 	"lensamity/migrations"
 	"log/slog"
 	"os"
@@ -19,8 +20,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
+	dbURL, err := config.LoadDB()
+	if err != nil {
 		slog.Error("environment variable is not set", "error", "DATABASE_URL")
 		os.Exit(1)
 	}

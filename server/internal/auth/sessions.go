@@ -17,8 +17,8 @@ type sessionTokens struct {
 	secret []byte
 }
 
-func newSessionTokens(secret string) *sessionTokens {
-	return &sessionTokens{secret: []byte(secret)}
+func newSessionTokens(secret string) sessionTokens {
+	return sessionTokens{secret: []byte(secret)}
 }
 
 type sessionCredentials struct {
