@@ -72,8 +72,9 @@ func (r *photoRepository) createPendingUpload(ctx context.Context, p createPendi
 	}
 
 	return &UploadObjectRequest{
-		URL:    req.URL,
-		Method: req.Method,
-		Header: req.SignedHeader,
+		PhotoID: p.PhotoID,
+		URL:     req.URL,
+		Method:  req.Method,
+		Header:  req.SignedHeader,
 	}, nil
 }

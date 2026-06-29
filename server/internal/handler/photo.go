@@ -43,6 +43,7 @@ type UploadIntentRequest struct {
 }
 
 type UploadResponseBody struct {
+	PhotoID uuid.UUID           `json:"photoID"`
 	URL     string              `json:"url"`
 	Method  string              `json:"method"`
 	Headers map[string][]string `json:"headers"`
@@ -110,6 +111,7 @@ func (ph *PhotoHandler) UploadIntent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(UploadResponseBody{
+		PhotoID: res.PhotoID,
 		URL:     res.URL,
 		Method:  res.Method,
 		Headers: res.Header,

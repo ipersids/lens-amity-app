@@ -34,9 +34,10 @@ func NewPhotoService(store *db.Store, s3Client *storage.Client) (*PhotoService, 
 }
 
 type UploadObjectRequest struct {
-	URL    string
-	Method string
-	Header map[string][]string
+	PhotoID uuid.UUID
+	URL     string
+	Method  string
+	Header  map[string][]string
 }
 
 var (

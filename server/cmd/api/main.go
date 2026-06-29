@@ -36,7 +36,8 @@ func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware fun
 	mux.HandleFunc("GET /api/users/{username}", authRequiredMiddleware(h.user.GetUserProfile))
 
 	// 3. Strict Session Protected routes
-	mux.HandleFunc("POST /api/photos/upload-intent", authRequiredMiddleware(h.photo.UploadIntent))
+	mux.HandleFunc("PUT /api/photos/upload", authRequiredMiddleware(h.photo.UploadIntent))
+	// mux.HandleFunc("PUT /api/photos/upload/complete", authRequiredMiddleware(h.photo.UploadComplete))
 
 	// mux.Handle("GET /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.GetMyProfile)))
 	// mux.Handle("PATCH /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.UpdateMyProfile)))
