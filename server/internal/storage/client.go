@@ -21,7 +21,7 @@ type Config struct {
 
 type Client struct {
 	Bucket  string
-	s3      *s3.Client
+	Client  *s3.Client
 	Presign *s3.PresignClient
 }
 
@@ -55,7 +55,7 @@ func NewS3Client(c Config) (*Client, error) {
 
 	return &Client{
 		Bucket:  c.Bucket,
-		s3:      client,
+		Client:  client,
 		Presign: presignClient,
 	}, nil
 }

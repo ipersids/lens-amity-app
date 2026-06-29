@@ -13,9 +13,18 @@ INSERT INTO photos (
   'pending'
 );
 
--- name: UpdatePhotoRecordStatus :exec
+-- name: MarkPhotoReady :one
 UPDATE photos
-  SET status = sqlc.arg(status)
+  SET status = 'ready',
+      uploaded_at = now()
 WHERE id = sqlc.arg(id)
   AND owner_user_id = sqlc.arg(owner_user_id)
-  AND status = 'pending';
+  AND status = 'pending'
+RETURNING id;
+
+-- name: GetPhotoRecord :one
+SELECT id, owner_user_id, bucket,
+  object_key, upload_expires_at, status
+FROM photos
+WHERE id = sqlc.arg(id)
+  AND owner_user_id = sqlc.arg(owner_user_id);

@@ -17,6 +17,7 @@ import (
 
 type photoService interface {
 	UploadObject(context.Context, photo.UploadObjectInput) (photo.UploadObjectRequest, error)
+	UploadComplete(context.Context, uuid.UUID, uuid.UUID) error
 }
 
 type PhotoHandler struct {
@@ -120,6 +121,47 @@ func (ph *PhotoHandler) UploadIntent(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("UploadIntent: failed encode response", "error", err)
 	}
+}
+
+func (ph *PhotoHandler) UploadComplete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	photoID, err := uuid.Parse(id)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "malformed_id", "malformed ID")
+		return
+	}
+
+	ctx := r.Context()
+
+	userID, ok := ctx.Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, http.StatusText(http.StatusUnauthorized), "Unauthorized")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := ph.photoService.UploadComplete(ctx, photoID, userID); err != nil {
+		switch {
+		case errors.Is(err, photo.ErrUnsupportedFileType):
+			WriteError(w, http.StatusUnsupportedMediaType, "unsupported_file_type", "unsupported file type")
+		case errors.Is(err, photo.ErrFileTooLarge):
+			WriteError(w, http.StatusRequestEntityTooLarge, "file_too_large", "file must be 10 MB or smaller")
+		case errors.Is(err, photo.ErrPhotoNotFound):
+			WriteError(w, http.StatusNotFound, "photo_not_found", "photo not found")
+		case errors.Is(err, photo.ErrPhotoNotCompletable):
+			WriteError(w, http.StatusConflict, "photo_not_completable", "photo cannot be completed")
+		case errors.Is(err, photo.ErrUploadNotFound):
+			WriteError(w, http.StatusNotFound, "upload_not_found", "uploaded object not found")
+		default:
+			slog.Error("UploadComplete: request failed", "error", err)
+			WriteError(w, statusForPhotoError(err), "internal_error", "something went wrong")
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func statusForPhotoError(err error) int {

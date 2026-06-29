@@ -50,21 +50,60 @@ func (q *Queries) CreatePendingPhotoRecord(ctx context.Context, arg CreatePendin
 	return err
 }
 
-const updatePhotoRecordStatus = `-- name: UpdatePhotoRecordStatus :exec
-UPDATE photos
-  SET status = $1
-WHERE id = $2
-  AND owner_user_id = $3
-  AND status = 'pending'
+const getPhotoRecord = `-- name: GetPhotoRecord :one
+SELECT id, owner_user_id, bucket,
+  object_key, upload_expires_at, status
+FROM photos
+WHERE id = $1
+  AND owner_user_id = $2
 `
 
-type UpdatePhotoRecordStatusParams struct {
-	Status      PhotoProcessingStatus
+type GetPhotoRecordParams struct {
 	ID          uuid.UUID
 	OwnerUserID uuid.UUID
 }
 
-func (q *Queries) UpdatePhotoRecordStatus(ctx context.Context, arg UpdatePhotoRecordStatusParams) error {
-	_, err := q.db.Exec(ctx, updatePhotoRecordStatus, arg.Status, arg.ID, arg.OwnerUserID)
-	return err
+type GetPhotoRecordRow struct {
+	ID              uuid.UUID
+	OwnerUserID     uuid.UUID
+	Bucket          string
+	ObjectKey       string
+	UploadExpiresAt time.Time
+	Status          PhotoProcessingStatus
+}
+
+func (q *Queries) GetPhotoRecord(ctx context.Context, arg GetPhotoRecordParams) (GetPhotoRecordRow, error) {
+	row := q.db.QueryRow(ctx, getPhotoRecord, arg.ID, arg.OwnerUserID)
+	var i GetPhotoRecordRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.Bucket,
+		&i.ObjectKey,
+		&i.UploadExpiresAt,
+		&i.Status,
+	)
+	return i, err
+}
+
+const markPhotoReady = `-- name: MarkPhotoReady :one
+UPDATE photos
+  SET status = 'ready',
+      uploaded_at = now()
+WHERE id = $1
+  AND owner_user_id = $2
+  AND status = 'pending'
+RETURNING id
+`
+
+type MarkPhotoReadyParams struct {
+	ID          uuid.UUID
+	OwnerUserID uuid.UUID
+}
+
+func (q *Queries) MarkPhotoReady(ctx context.Context, arg MarkPhotoReadyParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, markPhotoReady, arg.ID, arg.OwnerUserID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }

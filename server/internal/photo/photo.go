@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"lensamity/internal/db"
 	"lensamity/internal/storage"
+	"mime"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,8 +14,14 @@ import (
 )
 
 type PhotoService struct {
-	repo *photoRepository
+	repo photoStore
 	now  func() time.Time
+}
+
+type photoStore interface {
+	createPendingUpload(context.Context, createPendingUploadParams) (*UploadObjectRequest, error)
+	getUploadStatus(context.Context, uuid.UUID, uuid.UUID) (*UploadObjectStatus, error)
+	setCompleteUploadStatus(context.Context, uuid.UUID, uuid.UUID) (bool, error)
 }
 
 func NewPhotoService(store *db.Store, s3Client *storage.Client) (*PhotoService, error) {
@@ -22,7 +29,7 @@ func NewPhotoService(store *db.Store, s3Client *storage.Client) (*PhotoService, 
 		return nil, errors.New("new photo service: nil postgres or s3 data")
 	}
 
-	repo, err := newPhotoRepository(store, s3Client.Bucket, s3Client.Presign)
+	repo, err := newPhotoRepository(store, s3Client)
 	if err != nil {
 		return nil, err
 	}
@@ -43,9 +50,15 @@ type UploadObjectRequest struct {
 var (
 	ErrInternal            = errors.New("internal error")
 	ErrUnsupportedFileType = errors.New("unsupported file type")
+	ErrFileTooLarge        = errors.New("file size exceeded limits")
+	ErrPhotoNotFound       = errors.New("photo not found")
+	ErrPhotoNotCompletable = errors.New("photo cannot be completed")
+	ErrUploadNotFound      = errors.New("uploaded object not found")
 	ErrPhotoAlreadyExists  = errors.New("photo already exists for date")
 	ErrDateOutOfRange      = errors.New("date must be within the last 7 days including today")
 )
+
+const maxImageBytes int64 = 10 * 1024 * 1024
 
 type UploadObjectInput struct {
 	UserID      uuid.UUID
@@ -103,8 +116,49 @@ func (ps *PhotoService) UploadObject(ctx context.Context, o UploadObjectInput) (
 	return *res, nil
 }
 
+func (ps *PhotoService) UploadComplete(ctx context.Context, photoID uuid.UUID, userID uuid.UUID) error {
+	status, err := ps.repo.getUploadStatus(ctx, photoID, userID)
+	if err != nil {
+		return err
+	}
+
+	if status.Status == db.PhotoProcessingStatusReady {
+		return nil
+	}
+	if status.Status != db.PhotoProcessingStatusPending {
+		return ErrPhotoNotCompletable
+	}
+
+	if status.ContentType == nil {
+		return ErrUnsupportedFileType
+	}
+
+	if _, err := imageExt(*status.ContentType); err != nil {
+		return err
+	}
+
+	if status.ContentLength == nil || *status.ContentLength > maxImageBytes {
+		return ErrFileTooLarge
+	}
+
+	updated, err := ps.repo.setCompleteUploadStatus(ctx, photoID, userID)
+	if err != nil {
+		return err
+	}
+	if updated {
+		return nil
+	}
+
+	return ErrPhotoNotCompletable
+}
+
 func imageExt(contentType string) (string, error) {
-	switch contentType {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "", ErrUnsupportedFileType
+	}
+
+	switch mediaType {
 	case "image/jpeg":
 		return "jpg", nil
 	case "image/png":
