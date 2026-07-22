@@ -13,22 +13,24 @@ const Header = () => {
   };
 
   return (
-    <header>
-      <NavLink to="/">Lensamity</NavLink>
+    <header className="site-header">
+      <NavLink className="brand-link" to="/">
+        Lensamity
+      </NavLink>
 
       {user ? (
-        <nav style={{ display: "flex", gap: "10px" }} aria-label="Account">
-          <span>{user.displayName}</span>
-          <button disabled={isLoading} onClick={handleLogout} type="button">
+        <nav className="site-nav" aria-label="Account">
+          <span className="nav-user">{user.displayName}</span>
+          <button className="nav-button" disabled={isLoading} onClick={handleLogout} type="button">
             Log out
           </button>
         </nav>
       ) : (
-        <nav style={{ display: "flex", gap: "10px" }} aria-label="Auth">
+        <nav className="site-nav" aria-label="Auth">
           <NavLink to="/login" end>
             Log in
           </NavLink>
-          <NavLink to="/signup" end>
+          <NavLink className="nav-button" to="/signup" end>
             Sign up
           </NavLink>
         </nav>
