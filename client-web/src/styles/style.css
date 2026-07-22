@@ -35,6 +35,11 @@ input {
   font: inherit;
 }
 
+textarea {
+  font: inherit;
+  resize: vertical;
+}
+
 .app,
 .layout {
   min-height: 100vh;
@@ -275,6 +280,132 @@ footer {
   margin: 0;
   color: var(--error);
   font-size: 0.9rem;
+}
+
+.add-photo-page {
+  display: grid;
+  place-items: center;
+}
+
+.add-photo-form {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 520px);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: clamp(22px, 5vw, 36px);
+  background: var(--surface);
+}
+
+.add-photo-form h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.add-photo-form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.add-photo-form input,
+.add-photo-form textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-weight: 400;
+  outline: none;
+}
+
+.add-photo-form input:focus,
+.add-photo-form textarea:focus {
+  border-color: var(--primary);
+  background: var(--surface);
+}
+
+.photo-upload-area {
+  position: relative;
+  place-items: center;
+  min-height: 240px;
+  border: 2px dashed var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  background: #f9fbff;
+  color: var(--muted);
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.photo-upload-area:hover,
+.photo-upload-area.dragging {
+  border-color: var(--primary);
+  background: var(--surface);
+}
+
+.photo-upload-area input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.photo-upload-area img {
+  width: 100%;
+  max-height: 220px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.photo-upload-icon {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--primary);
+}
+
+.photo-upload-icon svg {
+  width: 28px;
+}
+
+.photo-upload-area strong {
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.photo-upload-area small {
+  font-weight: 400;
+}
+
+.add-photo-form button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 18px;
+  background: var(--primary);
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.add-photo-form button:hover {
+  background: var(--primary-hover);
+}
+
+.add-photo-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 @media (max-width: 560px) {

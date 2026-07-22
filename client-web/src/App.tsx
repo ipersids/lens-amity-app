@@ -1,5 +1,6 @@
 import { Route, Routes } from "react-router";
 import Layout from "./features/Layout";
+import AddPhotoPage from "./pages/AddPhotoPage";
 import AuthPage from "./pages/AuthPage";
 
 function App() {
@@ -10,7 +11,7 @@ function App() {
           <Route path="/" element={<p>APP</p>} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/signup" element={<AuthPage mode="signup" />} />
-          <Route path="/upload" element={<p>Upload</p>} />
+          <Route path="/upload" element={<AddPhotoPage />} />
         </Route>
       </Routes>
     </div>
