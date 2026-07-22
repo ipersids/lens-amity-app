@@ -75,7 +75,7 @@ input {
 }
 
 .site-nav a,
-.nav-button {
+.site-nav button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -86,12 +86,14 @@ input {
   background: transparent;
   color: var(--text);
   cursor: pointer;
+  font-weight: 700;
   white-space: nowrap;
 }
 
 .site-nav a:hover,
-.site-nav a.active,
-.nav-button:hover {
+.site-nav a:focus-visible,
+.site-nav button:hover,
+.site-nav button:focus-visible {
   background: var(--surface-muted);
 }
 
@@ -100,7 +102,8 @@ input {
   color: #ffffff;
 }
 
-.site-nav .nav-button:hover {
+.site-nav .nav-button:hover,
+.site-nav .nav-button:focus-visible {
   background: var(--primary-hover);
 }
 
@@ -109,6 +112,37 @@ input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.account-menu {
+  position: relative;
+}
+
+.account-menu-trigger[aria-expanded="true"] {
+  background: var(--surface-muted);
+}
+
+.account-menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 160px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(31, 41, 51, 0.14);
+}
+
+.account-menu-panel a,
+.account-menu-panel button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 38px;
+  border-radius: 8px;
+  padding: 0 10px;
+  text-align: left;
 }
 
 main {
@@ -259,7 +293,7 @@ footer {
   }
 
   .site-nav a,
-  .nav-button {
+  .site-nav button {
     min-height: 38px;
     padding: 0 12px;
   }

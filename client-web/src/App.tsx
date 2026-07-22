@@ -10,6 +10,7 @@ function App() {
           <Route path="/" element={<p>APP</p>} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/signup" element={<AuthPage mode="signup" />} />
+          <Route path="/upload" element={<p>Upload</p>} />
         </Route>
       </Routes>
     </div>
