@@ -30,7 +30,7 @@ func NewS3Client(c Config) (*Client, error) {
 		return nil, err
 	}
 
-	// build aws.Config
+	// build aws.Config for server-side S3 calls inside the Docker network.
 	cfg := aws.Config{
 		Region:       c.Region,
 		BaseEndpoint: &c.InternalEndpoint,
@@ -46,8 +46,16 @@ func NewS3Client(c Config) (*Client, error) {
 		return nil, errors.New("failed initialize S3 client from config")
 	}
 
-	// build S3 presign client
-	presignClient := s3.NewPresignClient(client)
+	// build aws.Config for URLs returned to the browser.
+	presignCfg := aws.Config{
+		Region:       c.Region,
+		BaseEndpoint: &c.PublicEndpoint,
+		Credentials:  aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(c.AccessKeyID, c.SecretAccessKey, "")),
+	}
+
+	presignClient := s3.NewPresignClient(s3.NewFromConfig(presignCfg, func(o *s3.Options) {
+		o.UsePathStyle = c.UsePathStyle
+	}))
 
 	if presignClient == nil {
 		return nil, errors.New("failed initialize S3 presign client from config")

@@ -1,5 +1,14 @@
 import { PhotoIcon } from "@heroicons/react/24/outline";
-import { type ChangeEventHandler, type DragEventHandler, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEventHandler,
+  type DragEventHandler,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { getApiErrorMessage } from "../services/api";
+import photoService from "../services/photo";
+import { useNavigate } from "react-router";
 
 const DATE_ERROR = "Date must be within the last 7 days.";
 
@@ -22,11 +31,18 @@ const getDateRange = () => {
   };
 };
 
+const toApiDate = (value: string) => {
+  const [year, month, day] = value.split("-");
+  return `${day}-${month}-${year}`;
+};
+
 const AddPhotoPage = () => {
+  const navigate = useNavigate();
   const { min: minDate, max: maxDate } = useMemo(getDateRange, []);
-  const [fileName, setFileName] = useState<string>("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [photoDate, setPhotoDate] = useState<string>(maxDate);
   const [dateError, setDateError] = useState<string>("");
 
@@ -40,7 +56,7 @@ const AddPhotoPage = () => {
 
   const selectFile = (file?: File) => {
     if (file?.type.startsWith("image/")) {
-      setFileName(file.name);
+      setSelectedFile(file);
       setPreviewUrl(URL.createObjectURL(file));
     }
   };
@@ -67,6 +83,24 @@ const AddPhotoPage = () => {
     setDateError(value < minDate || value > maxDate ? DATE_ERROR : "");
   };
 
+  const handleUpload = async () => {
+    if (!selectedFile) return;
+
+    setIsLoading(true);
+    console.log("button clicked");
+    try {
+      await photoService.upload(
+        { date: toApiDate(photoDate), contentType: selectedFile.type },
+        selectedFile,
+      );
+      navigate("/");
+    } catch (err: unknown) {
+      throw new Error(getApiErrorMessage(err));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <section className="add-photo-page">
       <form className="add-photo-form">
@@ -86,8 +120,12 @@ const AddPhotoPage = () => {
             </span>
           )}
 
-          <strong>{fileName || "Drag and drop or click to choose photo"}</strong>
-          <small>{fileName ? "Click or drop another image to replace it" : "PNG or JPG, one image only"}</small>
+          <strong>{selectedFile?.name || "Drag and drop or click to choose photo"}</strong>
+          <small>
+            {selectedFile?.name
+              ? "Click or drop another image to replace it"
+              : "PNG or JPG, one image only"}
+          </small>
           <input type="file" accept="image/*" onChange={handleFileChange} />
         </label>
 
@@ -120,7 +158,11 @@ const AddPhotoPage = () => {
           )}
         </label>
 
-        <button type="button" disabled={!!dateError}>
+        <button
+          type="button"
+          disabled={!!dateError || !selectedFile || isLoading}
+          onClick={handleUpload}
+        >
           Add photo
         </button>
       </form>
