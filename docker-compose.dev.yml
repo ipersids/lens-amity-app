@@ -71,6 +71,9 @@ services:
       - ./server/.env
     container_name: api
     command: ["air", "-c", "air.toml"]
+    environment:
+      S3_INTERNAL_ENDPOINT: http://rustfs:9000
+      S3_PUBLIC_ENDPOINT: http://s3.localhost:9000
     volumes:
       - ./server:/app
     expose:
@@ -109,6 +112,7 @@ services:
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
       RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY}
       RUSTFS_REGION: ${RUSTFS_REGION}
+      RUSTFS_CORS_ALLOWED_ORIGINS: ${RUSTFS_CORS_ALLOWED_ORIGINS:-*}
     volumes:
       - ./infra/rustfs/data:/data
       - ./infra/rustfs/logs:/logs

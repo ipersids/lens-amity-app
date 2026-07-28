@@ -40,7 +40,7 @@ func NewPhotoHandler(service photoService) (*PhotoHandler, error) {
 
 type UploadIntentRequest struct {
 	Date        string `json:"date"`
-	ContentType string `json:"content_type"`
+	ContentType string `json:"contentType"`
 }
 
 type UploadResponseBody struct {
