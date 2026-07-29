@@ -70,3 +70,7 @@ UPDATE sessions
   SET revoked_at = sqlc.arg(revoked_at)
 WHERE user_id = sqlc.arg(user_id)
   AND revoked_at IS NULL;
+
+-- name: GetSessionOwner :one
+SELECT username_key, username_display FROM users
+WHERE id = sqlc.arg(id);

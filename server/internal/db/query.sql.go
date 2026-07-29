@@ -153,6 +153,23 @@ func (q *Queries) GetSession(ctx context.Context, tokenHash []byte) (Session, er
 	return i, err
 }
 
+const getSessionOwner = `-- name: GetSessionOwner :one
+SELECT username_key, username_display FROM users
+WHERE id = $1
+`
+
+type GetSessionOwnerRow struct {
+	UsernameKey     string
+	UsernameDisplay string
+}
+
+func (q *Queries) GetSessionOwner(ctx context.Context, id uuid.UUID) (GetSessionOwnerRow, error) {
+	row := q.db.QueryRow(ctx, getSessionOwner, id)
+	var i GetSessionOwnerRow
+	err := row.Scan(&i.UsernameKey, &i.UsernameDisplay)
+	return i, err
+}
+
 const revokeAllSessions = `-- name: RevokeAllSessions :exec
 UPDATE sessions
   SET revoked_at = $1
