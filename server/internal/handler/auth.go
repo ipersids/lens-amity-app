@@ -19,6 +19,7 @@ type authService interface {
 	Login(context.Context, string, string) (*auth.LoginResult, error)
 	Logout(context.Context, string) error
 	LogoutAll(context.Context, uuid.UUID) error
+	SessionOwner(ctx context.Context, userID uuid.UUID) (*auth.SessionOwnerResult, error)
 }
 
 type AuthHandler struct {
@@ -198,6 +199,38 @@ func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 
 	middleware.ClearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type SessionResponse struct {
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+}
+
+func (h *AuthHandler) Session(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	user, err := h.authService.SessionOwner(ctx, userID)
+	if err != nil {
+		slog.Error("Session request failed", "error", err)
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(SessionResponse{Username: user.UsernameKey, DisplayName: user.UsernameDisplay})
+
+	if err != nil {
+		slog.Error("Signup: failed encode response", "error", err)
+	}
 }
 
 func statusForAuthError(err error) int {

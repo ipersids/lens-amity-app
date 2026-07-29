@@ -31,6 +31,7 @@ func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware fun
 	mux.HandleFunc("POST /api/auth/login", h.auth.Login)
 	mux.HandleFunc("POST /api/auth/logout", h.auth.Logout)
 	mux.HandleFunc("POST /api/auth/logout-all", authRequiredMiddleware(h.auth.LogoutAll))
+	mux.HandleFunc("GET /api/auth/session", authRequiredMiddleware(h.auth.Session))
 
 	// 2. @TODO Context-aware Profile route
 	mux.HandleFunc("GET /api/users/{username}", authRequiredMiddleware(h.user.GetUserProfile))
