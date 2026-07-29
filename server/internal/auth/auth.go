@@ -231,6 +231,26 @@ func (s *AuthService) LogoutAll(ctx context.Context, userID uuid.UUID) error {
 	return nil
 }
 
+type SessionOwnerResult struct {
+	UsernameKey     string
+	UsernameDisplay string
+}
+
+func (s *AuthService) SessionOwner(ctx context.Context, userID uuid.UUID) (*SessionOwnerResult, error) {
+	user, err := s.store.Queries.GetSessionOwner(ctx, userID)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("%w: get session owner data by id timeout: %w", ErrInternal, err)
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrInvalidCredentials
+		}
+		return nil, fmt.Errorf("%w: session owner data by id: %w", ErrInternal, err)
+	}
+
+	return &SessionOwnerResult{UsernameKey: user.UsernameKey, UsernameDisplay: user.UsernameDisplay}, nil
+}
+
 type SessionResult struct {
 	UserID uuid.UUID
 }
