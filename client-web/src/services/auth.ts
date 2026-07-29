@@ -23,6 +23,11 @@ type LoginResponse = {
   displayName: string;
 };
 
+type SessionResponse = {
+  username: string;
+  displayName: string;
+};
+
 const signup = async (credentials: SignupItem): Promise<SignupResponse> => {
   const { data } = await authApi.post<SignupResponse>(`${baseAuthURI}/signup`, {
     ...credentials,
@@ -44,6 +49,11 @@ const logoutAll = async () => {
   await internalApi.post<void>(`${baseAuthURI}/logout-all`);
 };
 
-const authService = { signup, login, logout, logoutAll };
+const session = async () => {
+  const { data } = await internalApi.get<SessionResponse>(`${baseAuthURI}/session`);
+  return data;
+};
+
+const authService = { signup, login, logout, logoutAll, session };
 
 export default authService;

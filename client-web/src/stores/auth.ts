@@ -4,6 +4,8 @@ import { getApiErrorMessage } from "../services/api";
 import type { LoginItem, SignupItem } from "../services/auth";
 import authService from "../services/auth";
 
+const authStoreKey = "auth-storage";
+
 interface CurrentUser {
   username: string;
   displayName: string;
@@ -14,6 +16,7 @@ interface AuthActions {
   login: (input: LoginItem) => Promise<void>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
+  verifySession: () => Promise<void>;
 }
 
 interface AuthState {
@@ -76,6 +79,7 @@ const useAuthStore = create<AuthState>()(
               user: null,
               isLoading: false,
             }));
+            localStorage.removeItem(authStoreKey);
           }
         },
 
@@ -93,15 +97,40 @@ const useAuthStore = create<AuthState>()(
               user: null,
               isLoading: false,
             }));
+            localStorage.removeItem(authStoreKey);
+          }
+        },
+
+        verifySession: async () => {
+          try {
+            const user = await authService.session();
+            set(() => ({
+              user: {
+                username: user.username,
+                displayName: user.displayName,
+              },
+              isLoading: false,
+            }));
+          } catch {
+            set(() => ({
+              user: null,
+              isLoading: false,
+            }));
+            localStorage.removeItem(authStoreKey);
           }
         },
       },
     }),
     {
-      name: "auth-storage",
+      name: authStoreKey,
       partialize: (state) => ({
         user: state.user,
       }),
+      onRehydrateStorage: () => {
+        return (state) => {
+          void state?.actions.verifySession();
+        };
+      },
     },
   ),
 );
