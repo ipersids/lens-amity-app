@@ -90,7 +90,7 @@ func (ps *PhotoService) UploadObject(ctx context.Context, o UploadObjectInput) (
 	}
 
 	objectKey := fmt.Sprintf(
-		"photos/%s/%s/%s/original.%s",
+		"%s/photos/%s/%s/original.%s",
 		o.UserID.String(),
 		localDate.Format("2006-01-02"),
 		objectID.String(),
