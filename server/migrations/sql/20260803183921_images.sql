@@ -2,9 +2,7 @@
 CREATE TYPE upload_kind AS ENUM ('photo', 'avatar');
 
 CREATE TYPE upload_status AS ENUM (
-  'pending_upload',
-  'uploaded',
-  'processing',
+  'pending',
   'ready',
   'failed',
   'expired',
@@ -15,7 +13,7 @@ CREATE TABLE IF NOT EXISTS uploaded_files (
   id UUID PRIMARY KEY,
   owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   kind upload_kind NOT NULL,
-  status upload_status NOT NULL DEFAULT 'pending_upload',
+  status upload_status NOT NULL DEFAULT 'pending',
   failure_reason TEXT,
 
   bucket VARCHAR(63) NOT NULL,
@@ -31,7 +29,6 @@ CREATE TABLE IF NOT EXISTS uploaded_files (
   description TEXT,
 
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  uploaded_at TIMESTAMPTZ,
   processed_at TIMESTAMPTZ,
   expires_at TIMESTAMPTZ NOT NULL,
   deleted_at TIMESTAMPTZ,
@@ -75,11 +72,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uploaded_files_owner_photo_date_active_unique
 ON uploaded_files (owner_user_id, photo_date)
 WHERE kind = 'photo'
   AND deleted_at IS NULL
-  AND status IN ('pending_upload', 'uploaded', 'processing', 'ready');
+  AND status IN ('pending', 'ready');
 
 CREATE INDEX IF NOT EXISTS uploaded_files_expirable_idx
 ON uploaded_files (expires_at)
-WHERE status IN ('pending_upload', 'uploaded');
+WHERE status = 'pending';
 
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS avatar_file_id UUID;

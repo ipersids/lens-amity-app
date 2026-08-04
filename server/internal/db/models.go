@@ -13,60 +13,91 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type PhotoProcessingStatus string
+type UploadKind string
 
 const (
-	PhotoProcessingStatusPending PhotoProcessingStatus = "pending"
-	PhotoProcessingStatusReady   PhotoProcessingStatus = "ready"
-	PhotoProcessingStatusFailed  PhotoProcessingStatus = "failed"
+	UploadKindPhoto  UploadKind = "photo"
+	UploadKindAvatar UploadKind = "avatar"
 )
 
-func (e *PhotoProcessingStatus) Scan(src interface{}) error {
+func (e *UploadKind) Scan(src interface{}) error {
 	switch s := src.(type) {
 	case []byte:
-		*e = PhotoProcessingStatus(s)
+		*e = UploadKind(s)
 	case string:
-		*e = PhotoProcessingStatus(s)
+		*e = UploadKind(s)
 	default:
-		return fmt.Errorf("unsupported scan type for PhotoProcessingStatus: %T", src)
+		return fmt.Errorf("unsupported scan type for UploadKind: %T", src)
 	}
 	return nil
 }
 
-type NullPhotoProcessingStatus struct {
-	PhotoProcessingStatus PhotoProcessingStatus
-	Valid                 bool // Valid is true if PhotoProcessingStatus is not NULL
+type NullUploadKind struct {
+	UploadKind UploadKind
+	Valid      bool // Valid is true if UploadKind is not NULL
 }
 
 // Scan implements the Scanner interface.
-func (ns *NullPhotoProcessingStatus) Scan(value interface{}) error {
+func (ns *NullUploadKind) Scan(value interface{}) error {
 	if value == nil {
-		ns.PhotoProcessingStatus, ns.Valid = "", false
+		ns.UploadKind, ns.Valid = "", false
 		return nil
 	}
 	ns.Valid = true
-	return ns.PhotoProcessingStatus.Scan(value)
+	return ns.UploadKind.Scan(value)
 }
 
 // Value implements the driver Valuer interface.
-func (ns NullPhotoProcessingStatus) Value() (driver.Value, error) {
+func (ns NullUploadKind) Value() (driver.Value, error) {
 	if !ns.Valid {
 		return nil, nil
 	}
-	return string(ns.PhotoProcessingStatus), nil
+	return string(ns.UploadKind), nil
 }
 
-type Photo struct {
-	ID              uuid.UUID
-	OwnerUserID     uuid.UUID
-	Bucket          string
-	ObjectKey       string
-	LocalDate       pgtype.Date
-	Status          PhotoProcessingStatus
-	UploadExpiresAt time.Time
-	UploadedAt      pgtype.Timestamptz
-	CreatedAt       time.Time
-	DeletedAt       pgtype.Timestamptz
+type UploadStatus string
+
+const (
+	UploadStatusPending UploadStatus = "pending"
+	UploadStatusReady   UploadStatus = "ready"
+	UploadStatusFailed  UploadStatus = "failed"
+	UploadStatusExpired UploadStatus = "expired"
+	UploadStatusDeleted UploadStatus = "deleted"
+)
+
+func (e *UploadStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UploadStatus(s)
+	case string:
+		*e = UploadStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UploadStatus: %T", src)
+	}
+	return nil
+}
+
+type NullUploadStatus struct {
+	UploadStatus UploadStatus
+	Valid        bool // Valid is true if UploadStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUploadStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.UploadStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UploadStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUploadStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UploadStatus), nil
 }
 
 type Session struct {
@@ -78,10 +109,33 @@ type Session struct {
 	RevokedAt         pgtype.Timestamptz
 }
 
+type UploadedFile struct {
+	ID                 uuid.UUID
+	OwnerUserID        uuid.UUID
+	Kind               UploadKind
+	Status             UploadStatus
+	FailureReason      pgtype.Text
+	Bucket             string
+	ObjectKeyOriginal  string
+	ObjectKeyProcessed []byte
+	ContentType        string
+	Size               int64
+	Width              pgtype.Int4
+	Height             pgtype.Int4
+	PhotoDate          pgtype.Date
+	Title              pgtype.Text
+	Description        pgtype.Text
+	CreatedAt          time.Time
+	ProcessedAt        pgtype.Timestamptz
+	ExpiresAt          time.Time
+	DeletedAt          pgtype.Timestamptz
+}
+
 type User struct {
 	ID              uuid.UUID
 	UsernameKey     string
 	UsernameDisplay string
 	PasswordHash    string
 	CreatedAt       pgtype.Timestamptz
+	AvatarFileID    pgtype.UUID
 }
