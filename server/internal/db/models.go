@@ -13,56 +13,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type UploadKind string
-
-const (
-	UploadKindPhoto  UploadKind = "photo"
-	UploadKindAvatar UploadKind = "avatar"
-)
-
-func (e *UploadKind) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = UploadKind(s)
-	case string:
-		*e = UploadKind(s)
-	default:
-		return fmt.Errorf("unsupported scan type for UploadKind: %T", src)
-	}
-	return nil
-}
-
-type NullUploadKind struct {
-	UploadKind UploadKind
-	Valid      bool // Valid is true if UploadKind is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullUploadKind) Scan(value interface{}) error {
-	if value == nil {
-		ns.UploadKind, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.UploadKind.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullUploadKind) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.UploadKind), nil
-}
-
 type UploadStatus string
 
 const (
-	UploadStatusPending UploadStatus = "pending"
-	UploadStatusReady   UploadStatus = "ready"
-	UploadStatusFailed  UploadStatus = "failed"
-	UploadStatusExpired UploadStatus = "expired"
-	UploadStatusDeleted UploadStatus = "deleted"
+	UploadStatusPending    UploadStatus = "pending"
+	UploadStatusProcessing UploadStatus = "processing"
+	UploadStatusReady      UploadStatus = "ready"
+	UploadStatusFailed     UploadStatus = "failed"
+	UploadStatusExpired    UploadStatus = "expired"
+	UploadStatusDeleted    UploadStatus = "deleted"
 )
 
 func (e *UploadStatus) Scan(src interface{}) error {
@@ -100,19 +59,28 @@ func (ns NullUploadStatus) Value() (driver.Value, error) {
 	return string(ns.UploadStatus), nil
 }
 
-type Session struct {
-	TokenHash         []byte
-	UserID            uuid.UUID
-	CreatedAt         time.Time
-	LastSeenAt        time.Time
-	AbsoluteExpiresAt time.Time
-	RevokedAt         pgtype.Timestamptz
-}
-
-type UploadedFile struct {
+type Avatar struct {
 	ID                 uuid.UUID
 	OwnerUserID        uuid.UUID
-	Kind               UploadKind
+	Status             UploadStatus
+	FailureReason      pgtype.Text
+	Bucket             string
+	ObjectKeyOriginal  string
+	ObjectKeyProcessed []byte
+	ContentType        string
+	Size               int64
+	Width              pgtype.Int4
+	Height             pgtype.Int4
+	CreatedAt          time.Time
+	UploadedAt         pgtype.Timestamptz
+	ProcessedAt        pgtype.Timestamptz
+	ExpiresAt          time.Time
+	DeletedAt          pgtype.Timestamptz
+}
+
+type Photo struct {
+	ID                 uuid.UUID
+	OwnerUserID        uuid.UUID
 	Status             UploadStatus
 	FailureReason      pgtype.Text
 	Bucket             string
@@ -126,9 +94,19 @@ type UploadedFile struct {
 	Title              pgtype.Text
 	Description        pgtype.Text
 	CreatedAt          time.Time
+	UploadedAt         pgtype.Timestamptz
 	ProcessedAt        pgtype.Timestamptz
 	ExpiresAt          time.Time
 	DeletedAt          pgtype.Timestamptz
+}
+
+type Session struct {
+	TokenHash         []byte
+	UserID            uuid.UUID
+	CreatedAt         time.Time
+	LastSeenAt        time.Time
+	AbsoluteExpiresAt time.Time
+	RevokedAt         pgtype.Timestamptz
 }
 
 type User struct {
@@ -137,5 +115,5 @@ type User struct {
 	UsernameDisplay string
 	PasswordHash    string
 	CreatedAt       pgtype.Timestamptz
-	AvatarFileID    pgtype.UUID
+	AvatarID        pgtype.UUID
 }

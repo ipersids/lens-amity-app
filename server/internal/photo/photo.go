@@ -122,10 +122,10 @@ func (ps *PhotoService) UploadComplete(ctx context.Context, photoID uuid.UUID, u
 		return err
 	}
 
-	if status.Status == db.PhotoProcessingStatusReady {
+	if status.Status == db.UploadStatusReady {
 		return nil
 	}
-	if status.Status != db.PhotoProcessingStatusPending {
+	if status.Status != db.UploadStatusProcessing {
 		return ErrPhotoNotCompletable
 	}
 
