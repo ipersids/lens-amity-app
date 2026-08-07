@@ -13,60 +13,91 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type PhotoProcessingStatus string
+type UploadStatus string
 
 const (
-	PhotoProcessingStatusPending PhotoProcessingStatus = "pending"
-	PhotoProcessingStatusReady   PhotoProcessingStatus = "ready"
-	PhotoProcessingStatusFailed  PhotoProcessingStatus = "failed"
+	UploadStatusPending    UploadStatus = "pending"
+	UploadStatusProcessing UploadStatus = "processing"
+	UploadStatusReady      UploadStatus = "ready"
+	UploadStatusFailed     UploadStatus = "failed"
+	UploadStatusExpired    UploadStatus = "expired"
+	UploadStatusDeleted    UploadStatus = "deleted"
 )
 
-func (e *PhotoProcessingStatus) Scan(src interface{}) error {
+func (e *UploadStatus) Scan(src interface{}) error {
 	switch s := src.(type) {
 	case []byte:
-		*e = PhotoProcessingStatus(s)
+		*e = UploadStatus(s)
 	case string:
-		*e = PhotoProcessingStatus(s)
+		*e = UploadStatus(s)
 	default:
-		return fmt.Errorf("unsupported scan type for PhotoProcessingStatus: %T", src)
+		return fmt.Errorf("unsupported scan type for UploadStatus: %T", src)
 	}
 	return nil
 }
 
-type NullPhotoProcessingStatus struct {
-	PhotoProcessingStatus PhotoProcessingStatus
-	Valid                 bool // Valid is true if PhotoProcessingStatus is not NULL
+type NullUploadStatus struct {
+	UploadStatus UploadStatus
+	Valid        bool // Valid is true if UploadStatus is not NULL
 }
 
 // Scan implements the Scanner interface.
-func (ns *NullPhotoProcessingStatus) Scan(value interface{}) error {
+func (ns *NullUploadStatus) Scan(value interface{}) error {
 	if value == nil {
-		ns.PhotoProcessingStatus, ns.Valid = "", false
+		ns.UploadStatus, ns.Valid = "", false
 		return nil
 	}
 	ns.Valid = true
-	return ns.PhotoProcessingStatus.Scan(value)
+	return ns.UploadStatus.Scan(value)
 }
 
 // Value implements the driver Valuer interface.
-func (ns NullPhotoProcessingStatus) Value() (driver.Value, error) {
+func (ns NullUploadStatus) Value() (driver.Value, error) {
 	if !ns.Valid {
 		return nil, nil
 	}
-	return string(ns.PhotoProcessingStatus), nil
+	return string(ns.UploadStatus), nil
+}
+
+type Avatar struct {
+	ID                 uuid.UUID
+	OwnerUserID        uuid.UUID
+	Status             UploadStatus
+	FailureReason      pgtype.Text
+	Bucket             string
+	ObjectKeyOriginal  string
+	ObjectKeyProcessed []byte
+	ContentType        string
+	Size               int64
+	Width              pgtype.Int4
+	Height             pgtype.Int4
+	CreatedAt          time.Time
+	UploadedAt         pgtype.Timestamptz
+	ProcessedAt        pgtype.Timestamptz
+	ExpiresAt          time.Time
+	DeletedAt          pgtype.Timestamptz
 }
 
 type Photo struct {
-	ID              uuid.UUID
-	OwnerUserID     uuid.UUID
-	Bucket          string
-	ObjectKey       string
-	LocalDate       pgtype.Date
-	Status          PhotoProcessingStatus
-	UploadExpiresAt time.Time
-	UploadedAt      pgtype.Timestamptz
-	CreatedAt       time.Time
-	DeletedAt       pgtype.Timestamptz
+	ID                 uuid.UUID
+	OwnerUserID        uuid.UUID
+	Status             UploadStatus
+	FailureReason      pgtype.Text
+	Bucket             string
+	ObjectKeyOriginal  string
+	ObjectKeyProcessed []byte
+	ContentType        string
+	Size               int64
+	Width              pgtype.Int4
+	Height             pgtype.Int4
+	PhotoDate          pgtype.Date
+	Title              pgtype.Text
+	Description        pgtype.Text
+	CreatedAt          time.Time
+	UploadedAt         pgtype.Timestamptz
+	ProcessedAt        pgtype.Timestamptz
+	ExpiresAt          time.Time
+	DeletedAt          pgtype.Timestamptz
 }
 
 type Session struct {
@@ -84,4 +115,5 @@ type User struct {
 	UsernameDisplay string
 	PasswordHash    string
 	CreatedAt       pgtype.Timestamptz
+	AvatarID        pgtype.UUID
 }

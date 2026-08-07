@@ -57,16 +57,20 @@ func (r *photoRepository) createPendingUpload(ctx context.Context, p createPendi
 		return nil, fmt.Errorf("presign put object: %w", err)
 	}
 
-	err = r.store.Queries.CreatePendingPhotoRecord(ctx, db.CreatePendingPhotoRecordParams{
-		ID:          p.PhotoID,
-		OwnerUserID: p.OwnerUserID,
-		Bucket:      r.s3.Bucket,
-		ObjectKey:   p.ObjectKey,
-		LocalDate: pgtype.Date{
+	err = r.store.Queries.CreatePendingPhotoUploadRecord(ctx, db.CreatePendingPhotoUploadRecordParams{
+		ID:                p.PhotoID,
+		OwnerUserID:       p.OwnerUserID,
+		Bucket:            r.s3.Bucket,
+		ObjectKeyOriginal: p.ObjectKey,
+		PhotoDate: pgtype.Date{
 			Time:  p.LocalDate,
 			Valid: true,
 		},
-		UploadExpiresAt: p.ExpiresAt,
+		ExpiresAt:   p.ExpiresAt,
+		ContentType: p.ContentType,
+		Size:        maxImageBytes,
+		Title:       pgtype.Text{Valid: false},
+		Description: pgtype.Text{Valid: false},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create pending photo record: %w", err)
@@ -81,26 +85,29 @@ func (r *photoRepository) createPendingUpload(ctx context.Context, p createPendi
 }
 
 type UploadObjectStatus struct {
-	Status        db.PhotoProcessingStatus
+	Status        db.UploadStatus
 	ContentType   *string
 	ContentLength *int64
 }
 
 func (r *photoRepository) getUploadStatus(ctx context.Context, photoID uuid.UUID, userID uuid.UUID) (*UploadObjectStatus, error) {
-	record, err := r.store.Queries.GetPhotoRecord(ctx, db.GetPhotoRecordParams{ID: photoID, OwnerUserID: userID})
+	record, err := r.store.Queries.MarkPhotoUploadRecordProcessing(ctx, db.MarkPhotoUploadRecordProcessingParams{
+		ID:          photoID,
+		OwnerUserID: userID,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrPhotoNotFound
 		}
 		return nil, fmt.Errorf("get photo record: %w", err)
 	}
-	if record.Status != db.PhotoProcessingStatusPending {
+	if record.Status != db.UploadStatusProcessing {
 		return &UploadObjectStatus{Status: record.Status}, nil
 	}
 
 	head, err := r.s3.Client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(record.Bucket),
-		Key:    aws.String(record.ObjectKey),
+		Key:    aws.String(record.ObjectKeyOriginal),
 	})
 	if err != nil {
 		var notFound *s3types.NotFound
@@ -119,9 +126,12 @@ func (r *photoRepository) getUploadStatus(ctx context.Context, photoID uuid.UUID
 }
 
 func (r *photoRepository) setCompleteUploadStatus(ctx context.Context, photoID uuid.UUID, userID uuid.UUID) (bool, error) {
-	_, err := r.store.Queries.MarkPhotoReady(ctx, db.MarkPhotoReadyParams{
-		ID:          photoID,
-		OwnerUserID: userID,
+	_, err := r.store.Queries.MarkProcessedPhotoUploadRecordCompleted(ctx, db.MarkProcessedPhotoUploadRecordCompletedParams{
+		ID:                 photoID,
+		OwnerUserID:        userID,
+		ObjectKeyProcessed: []byte("{}"),
+		Width:              pgtype.Int4{Valid: false},
+		Height:             pgtype.Int4{Valid: false},
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
