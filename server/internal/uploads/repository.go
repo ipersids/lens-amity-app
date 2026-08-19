@@ -59,6 +59,24 @@ func (r *uploadRepository) presignPutObject(ctx context.Context, p presignPutObj
 	return req, nil
 }
 
+type objectHeadData struct {
+	ContentType string
+	Size        int64
+}
+
+func (r *uploadRepository) headObject(ctx context.Context, bucket string, key string) (*objectHeadData, error) {
+	head, err := r.s3.Client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
+	if err != nil {
+		return nil, fmt.Errorf("s3 head object: %w", err)
+	}
+
+	if head.ContentType == nil || head.ContentLength == nil || *head.ContentLength <= 0 {
+		return nil, ErrUploadMetadataMissing
+	}
+
+	return &objectHeadData{ContentType: *head.ContentType, Size: *head.ContentLength}, nil
+}
+
 type createPendingPhotoUploadParams struct {
 	ID          uuid.UUID
 	OwnerUserID uuid.UUID
