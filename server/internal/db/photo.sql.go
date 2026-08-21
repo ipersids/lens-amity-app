@@ -70,8 +70,7 @@ func (q *Queries) CreatePendingPhotoUploadRecord(ctx context.Context, arg Create
 
 const markPhotoUploadRecordProcessing = `-- name: MarkPhotoUploadRecordProcessing :one
 UPDATE photos
-  SET status = 'processing',
-      uploaded_at = now()
+  SET status = 'processing'
 WHERE id = $1
   AND owner_user_id = $2
   AND status = 'pending'
@@ -121,6 +120,7 @@ func (q *Queries) MarkPhotoUploadRecordProcessing(ctx context.Context, arg MarkP
 const markProcessedPhotoUploadRecordCompleted = `-- name: MarkProcessedPhotoUploadRecordCompleted :one
 UPDATE photos
   SET status = 'ready',
+      uploaded_at = now(),
       processed_at = now(),
       object_key_processed = $1,
       width = $2,
