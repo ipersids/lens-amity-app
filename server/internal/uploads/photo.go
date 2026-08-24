@@ -68,7 +68,12 @@ type UploadPhotoIntentParams struct {
 	Description string
 }
 
-func (ps *PhotoService) UploadPhotoIntent(ctx context.Context, p UploadPhotoIntentParams) (*v4.PresignedHTTPRequest, error) {
+type UploadPhotoIntentResult struct {
+	PresignedRequest *v4.PresignedHTTPRequest
+	PhotoID          uuid.UUID
+}
+
+func (ps *PhotoService) UploadPhotoIntent(ctx context.Context, p UploadPhotoIntentParams) (*UploadPhotoIntentResult, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("%w: nil context", ErrInternal)
 	}
@@ -116,7 +121,10 @@ func (ps *PhotoService) UploadPhotoIntent(ctx context.Context, p UploadPhotoInte
 		return nil, fmt.Errorf("%w: create pending photo upload: %w", ErrInternal, err)
 	}
 
-	return req, nil
+	return &UploadPhotoIntentResult{
+		PresignedRequest: req,
+		PhotoID:          photoID,
+	}, nil
 }
 
 type UploadPhotoCompleteParams struct {

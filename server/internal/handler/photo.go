@@ -6,7 +6,7 @@ import (
 	"errors"
 	"io"
 	"lensamity/internal/middleware"
-	"lensamity/internal/photo"
+	"lensamity/internal/uploads"
 	"log/slog"
 	"net/http"
 	"reflect"
@@ -16,8 +16,8 @@ import (
 )
 
 type photoService interface {
-	UploadObject(context.Context, photo.UploadObjectInput) (photo.UploadObjectRequest, error)
-	UploadComplete(context.Context, uuid.UUID, uuid.UUID) error
+	UploadPhotoIntent(ctx context.Context, p uploads.UploadPhotoIntentParams) (*uploads.UploadPhotoIntentResult, error)
+	UploadPhotoComplete(ctx context.Context, p uploads.UploadPhotoCompleteParams) error
 }
 
 type PhotoHandler struct {
@@ -41,13 +41,16 @@ func NewPhotoHandler(service photoService) (*PhotoHandler, error) {
 type UploadIntentRequest struct {
 	Date        string `json:"date"`
 	ContentType string `json:"contentType"`
+	Size        int64  `json:"size"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
 }
 
 type UploadResponseBody struct {
-	PhotoID uuid.UUID           `json:"photoID"`
-	URL     string              `json:"url"`
-	Method  string              `json:"method"`
-	Headers map[string][]string `json:"headers"`
+	PhotoID uuid.UUID   `json:"photoID"`
+	URL     string      `json:"url"`
+	Method  string      `json:"method"`
+	Header  http.Header `json:"header"`
 }
 
 func (ph *PhotoHandler) UploadIntent(w http.ResponseWriter, r *http.Request) {
@@ -78,6 +81,11 @@ func (ph *PhotoHandler) UploadIntent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Size <= 0 {
+		WriteError(w, http.StatusBadRequest, "invalid_upload_intent", "size is negative or zero")
+		return
+	}
+
 	date, err := time.Parse("02-01-2006", req.Date)
 	if err != nil {
 		WriteError(w, http.StatusBadRequest, "invalid_date", "date must be DD-MM-YYYY")
@@ -87,21 +95,24 @@ func (ph *PhotoHandler) UploadIntent(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	res, err := ph.photoService.UploadObject(ctx, photo.UploadObjectInput{
-		UserID:      userID,
-		Date:        date,
+	res, err := ph.photoService.UploadPhotoIntent(ctx, uploads.UploadPhotoIntentParams{
+		OwnerUserID: userID,
+		PhotoDate:   date,
 		ContentType: req.ContentType,
+		Size:        req.Size,
+		Title:       req.Title,
+		Description: req.Description,
 	})
 	if err != nil {
-		if errors.Is(err, photo.ErrUnsupportedFileType) {
+		if errors.Is(err, uploads.ErrUnsupportedFileType) {
 			WriteError(w, http.StatusBadRequest, "unsupported_file_type", "unsupported file type")
 			return
 		}
-		if errors.Is(err, photo.ErrDateOutOfRange) {
+		if errors.Is(err, uploads.ErrDateOutOfRange) {
 			WriteError(w, http.StatusBadRequest, "date_out_of_range", "date must be within the last 7 days including today")
 			return
 		}
-		if errors.Is(err, photo.ErrPhotoAlreadyExists) {
+		if errors.Is(err, uploads.ErrPhotoAlreadyExists) {
 			WriteError(w, http.StatusConflict, "photo_already_exists", "photo already exists for date")
 			return
 		}
@@ -112,10 +123,10 @@ func (ph *PhotoHandler) UploadIntent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(UploadResponseBody{
+		URL:     res.PresignedRequest.URL,
+		Method:  res.PresignedRequest.Method,
+		Header:  res.PresignedRequest.SignedHeader,
 		PhotoID: res.PhotoID,
-		URL:     res.URL,
-		Method:  res.Method,
-		Headers: res.Header,
 	})
 
 	if err != nil {
@@ -142,17 +153,17 @@ func (ph *PhotoHandler) UploadComplete(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	if err := ph.photoService.UploadComplete(ctx, photoID, userID); err != nil {
+	if err := ph.photoService.UploadPhotoComplete(ctx, uploads.UploadPhotoCompleteParams{ID: photoID, OwnerUserID: userID}); err != nil {
 		switch {
-		case errors.Is(err, photo.ErrUnsupportedFileType):
+		case errors.Is(err, uploads.ErrUnsupportedFileType):
 			WriteError(w, http.StatusUnsupportedMediaType, "unsupported_file_type", "unsupported file type")
-		case errors.Is(err, photo.ErrFileTooLarge):
+		case errors.Is(err, uploads.ErrFileTooLarge):
 			WriteError(w, http.StatusRequestEntityTooLarge, "file_too_large", "file must be 10 MB or smaller")
-		case errors.Is(err, photo.ErrPhotoNotFound):
+		case errors.Is(err, uploads.ErrPhotoNotFound):
 			WriteError(w, http.StatusNotFound, "photo_not_found", "photo not found")
-		case errors.Is(err, photo.ErrPhotoNotCompletable):
+		case errors.Is(err, uploads.ErrPhotoAlreadyExists):
 			WriteError(w, http.StatusConflict, "photo_not_completable", "photo cannot be completed")
-		case errors.Is(err, photo.ErrUploadNotFound):
+		case errors.Is(err, uploads.ErrUploadNotFound):
 			WriteError(w, http.StatusNotFound, "upload_not_found", "uploaded object not found")
 		default:
 			slog.Error("UploadComplete: request failed", "error", err)

@@ -23,7 +23,7 @@ const toDateInputValue = (date: Date) => {
 const getDateRange = () => {
   const today = new Date();
   const weekAgo = new Date(today);
-  weekAgo.setDate(today.getDate() - 7);
+  weekAgo.setDate(today.getDate() - 6);
 
   return {
     max: toDateInputValue(today),
@@ -45,6 +45,8 @@ const AddPhotoPage = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [photoDate, setPhotoDate] = useState<string>(maxDate);
   const [dateError, setDateError] = useState<string>("");
+  const [title, setTitle] = useState<string>("");
+  const [description, setDescription] = useState<string>("");
 
   useEffect(() => {
     return () => {
@@ -63,6 +65,16 @@ const AddPhotoPage = () => {
 
   const handleFileChange: ChangeEventHandler<HTMLInputElement> = (event) => {
     selectFile(event.target.files?.[0]);
+  };
+
+  const handleTitleChange: ChangeEventHandler<HTMLInputElement> = (event) => {
+    event.preventDefault();
+    setTitle(event.target.value);
+  };
+
+  const handleDescriptionChange: ChangeEventHandler<HTMLTextAreaElement> = (event) => {
+    event.preventDefault();
+    setDescription(event.target.value);
   };
 
   const handleDragOver: DragEventHandler<HTMLLabelElement> = (event) => {
@@ -87,10 +99,15 @@ const AddPhotoPage = () => {
     if (!selectedFile) return;
 
     setIsLoading(true);
-    console.log("button clicked");
     try {
       await photoService.upload(
-        { date: toApiDate(photoDate), contentType: selectedFile.type },
+        {
+          date: toApiDate(photoDate),
+          contentType: selectedFile.type,
+          size: selectedFile.size,
+          title: title,
+          description: description,
+        },
         selectedFile,
       );
       navigate("/");
@@ -126,17 +143,33 @@ const AddPhotoPage = () => {
               ? "Click or drop another image to replace it"
               : "PNG or JPG, one image only"}
           </small>
-          <input type="file" accept="image/*" onChange={handleFileChange} />
+          <input
+            type="file"
+            accept="image/jpeg, image/png, image/webp"
+            onChange={handleFileChange}
+          />
         </label>
 
         <label>
           Title
-          <input type="text" name="title" placeholder="Morning light in Helsinki" />
+          <input
+            type="text"
+            name="title"
+            value={title}
+            onChange={handleTitleChange}
+            placeholder="Morning light in Helsinki"
+          />
         </label>
 
         <label>
           Short description
-          <textarea name="description" placeholder="A few words about the moment" rows={4} />
+          <textarea
+            name="description"
+            value={description}
+            onChange={handleDescriptionChange}
+            placeholder="A few words about the moment"
+            rows={4}
+          />
         </label>
 
         <label>

@@ -6,13 +6,16 @@ const basePhotoURI = "/api/photos";
 export type UploadIntentItem = {
   date: string; // expected format DD-MM-YYYY
   contentType: string;
+  size: number;
+  title: string;
+  description: string;
 };
 
 type UploadIntentResponse = {
   photoID: string;
   url: string;
   method: string;
-  headers: Record<string, string[]>;
+  header: Record<string, string[]>;
 };
 
 const uploadIntent = async (photoInfo: UploadIntentItem): Promise<UploadIntentResponse> => {
@@ -24,14 +27,14 @@ const uploadIntent = async (photoInfo: UploadIntentItem): Promise<UploadIntentRe
 const uploadFile = async (intent: UploadIntentResponse, file: File): Promise<void> => {
   const headers: Record<string, string> = {};
 
-  Object.entries(intent.headers).forEach(([key, values]) => {
+  Object.entries(intent.header).forEach(([key, values]) => {
     if (key.toLowerCase() === "host") return;
 
-    headers[key] = values.join(",");
+    headers[key.toLowerCase()] = values.join(",");
   });
 
-  if (!headers["Content-Type"]) {
-    headers["Content-Type"] = file.type;
+  if (!headers["content-type"]) {
+    headers["content-type"] = file.type;
   }
 
   await axios.request({
