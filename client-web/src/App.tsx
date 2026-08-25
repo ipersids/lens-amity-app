@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router";
 import Layout from "./features/Layout";
 import AddPhotoPage from "./pages/AddPhotoPage";
 import AuthPage from "./pages/AuthPage";
+import ProfilePage from "./pages/ProfilePage";
 import ProtectedPage from "./pages/ProtectedPage";
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/signup" element={<AuthPage mode="signup" />} />
           <Route element={<ProtectedPage />}>
+            <Route path="/profile" element={<ProfilePage />} />
             <Route path="/upload" element={<AddPhotoPage />} />
           </Route>
         </Route>
