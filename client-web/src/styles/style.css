@@ -427,12 +427,28 @@ footer {
   aspect-ratio: 1;
   width: 100%;
   place-items: center;
+  overflow: hidden;
   border: 4px solid var(--surface);
   border-radius: 50%;
-  background:
-    linear-gradient(135deg, rgba(37, 99, 235, 0.9), rgba(14, 165, 233, 0.76)),
-    #2563eb;
+  background: var(--surface-muted);
   box-shadow: 0 12px 30px rgba(31, 41, 51, 0.18);
+}
+
+.profile-avatar img,
+.profile-avatar span {
+  width: 100%;
+  height: 100%;
+}
+
+.profile-avatar img {
+  display: block;
+  object-fit: cover;
+}
+
+.profile-avatar span {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.9), rgba(14, 165, 233, 0.76)), #2563eb;
   color: #ffffff;
   font-size: clamp(2.6rem, 8vw, 4.4rem);
   font-weight: 900;
@@ -528,8 +544,7 @@ footer {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(31, 41, 51, 0) 42%, rgba(31, 41, 51, 0.5)),
-    rgba(31, 41, 51, 0.04);
+    linear-gradient(180deg, rgba(31, 41, 51, 0) 42%, rgba(31, 41, 51, 0.5)), rgba(31, 41, 51, 0.04);
   content: "";
 }
 
@@ -553,6 +568,61 @@ footer {
   font-size: clamp(0.65rem, 1vw, 0.76rem);
   font-weight: 700;
   opacity: 0.86;
+}
+
+.profile-unavailable {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: min(100%, 440px);
+  margin: clamp(40px, 10vw, 96px) auto;
+  color: var(--muted);
+  text-align: center;
+}
+
+.profile-unavailable-icon {
+  display: grid;
+  width: 76px;
+  height: 76px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.profile-unavailable-icon svg {
+  width: 38px;
+}
+
+.profile-unavailable h1 {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: clamp(1.8rem, 5vw, 2.4rem);
+  line-height: 1.1;
+}
+
+.profile-unavailable p {
+  margin: 0;
+  max-width: 360px;
+  line-height: 1.5;
+}
+
+.profile-unavailable a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border-radius: 999px;
+  padding: 0 16px;
+  background: var(--primary);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.profile-unavailable a:hover,
+.profile-unavailable a:focus-visible {
+  background: var(--primary-hover);
 }
 
 @media (max-width: 1160px) {

@@ -56,7 +56,7 @@ const Header = () => {
             {isAccountMenuOpen && (
               <div className="account-menu-panel" role="menu">
                 <NavLink
-                  to="/profile"
+                  to={`/users/${user.username}`}
                   end
                   role="menuitem"
                   onClick={() => setIsAccountMenuOpen(false)}
