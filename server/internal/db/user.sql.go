@@ -40,31 +40,21 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 	return i, err
 }
 
-const deleteUser = `-- name: DeleteUser :exec
-DELETE FROM users
-WHERE username_key = $1
-`
-
-func (q *Queries) DeleteUser(ctx context.Context, usernameKey string) error {
-	_, err := q.db.Exec(ctx, deleteUser, usernameKey)
-	return err
-}
-
-const getFullUserDataByKey = `-- name: GetFullUserDataByKey :one
+const getUserDataForLogin = `-- name: GetUserDataForLogin :one
 SELECT id, username_key, username_display, password_hash FROM users
 WHERE username_key = $1
 `
 
-type GetFullUserDataByKeyRow struct {
+type GetUserDataForLoginRow struct {
 	ID              uuid.UUID
 	UsernameKey     string
 	UsernameDisplay string
 	PasswordHash    string
 }
 
-func (q *Queries) GetFullUserDataByKey(ctx context.Context, usernameKey string) (GetFullUserDataByKeyRow, error) {
-	row := q.db.QueryRow(ctx, getFullUserDataByKey, usernameKey)
-	var i GetFullUserDataByKeyRow
+func (q *Queries) GetUserDataForLogin(ctx context.Context, usernameKey string) (GetUserDataForLoginRow, error) {
+	row := q.db.QueryRow(ctx, getUserDataForLogin, usernameKey)
+	var i GetUserDataForLoginRow
 	err := row.Scan(
 		&i.ID,
 		&i.UsernameKey,
@@ -74,45 +64,19 @@ func (q *Queries) GetFullUserDataByKey(ctx context.Context, usernameKey string) 
 	return i, err
 }
 
-const getPublicUserProfile = `-- name: GetPublicUserProfile :one
+const getUserProfile = `-- name: GetUserProfile :one
 SELECT username_key, username_display FROM users
 WHERE username_key = $1
 `
 
-type GetPublicUserProfileRow struct {
+type GetUserProfileRow struct {
 	UsernameKey     string
 	UsernameDisplay string
 }
 
-func (q *Queries) GetPublicUserProfile(ctx context.Context, usernameKey string) (GetPublicUserProfileRow, error) {
-	row := q.db.QueryRow(ctx, getPublicUserProfile, usernameKey)
-	var i GetPublicUserProfileRow
-	err := row.Scan(&i.UsernameKey, &i.UsernameDisplay)
-	return i, err
-}
-
-const updateUser = `-- name: UpdateUser :one
-UPDATE users
-  SET username_key = $1,
-  username_display = $2
-WHERE username_key = $3
-RETURNING username_key, username_display
-`
-
-type UpdateUserParams struct {
-	UsernameKey        string
-	UsernameDisplay    string
-	CurrentUsernameKey string
-}
-
-type UpdateUserRow struct {
-	UsernameKey     string
-	UsernameDisplay string
-}
-
-func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error) {
-	row := q.db.QueryRow(ctx, updateUser, arg.UsernameKey, arg.UsernameDisplay, arg.CurrentUsernameKey)
-	var i UpdateUserRow
+func (q *Queries) GetUserProfile(ctx context.Context, usernameKey string) (GetUserProfileRow, error) {
+	row := q.db.QueryRow(ctx, getUserProfile, usernameKey)
+	var i GetUserProfileRow
 	err := row.Scan(&i.UsernameKey, &i.UsernameDisplay)
 	return i, err
 }

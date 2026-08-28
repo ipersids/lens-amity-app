@@ -135,7 +135,7 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Lo
 		return nil, ErrInvalidCredentials
 	}
 
-	uPrivate, err := s.store.Queries.GetFullUserDataByKey(ctx, ukey)
+	uPrivate, err := s.store.Queries.GetUserDataForLogin(ctx, ukey)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, fmt.Errorf("%w: get full user data by key timeout: %w", ErrInternal, err)
