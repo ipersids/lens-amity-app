@@ -59,25 +59,6 @@ func (ns NullUploadStatus) Value() (driver.Value, error) {
 	return string(ns.UploadStatus), nil
 }
 
-type Avatar struct {
-	ID                 uuid.UUID
-	OwnerUserID        uuid.UUID
-	Status             UploadStatus
-	FailureReason      pgtype.Text
-	Bucket             string
-	ObjectKeyOriginal  string
-	ObjectKeyProcessed []byte
-	ContentType        string
-	Size               int64
-	Width              pgtype.Int4
-	Height             pgtype.Int4
-	CreatedAt          time.Time
-	UploadedAt         pgtype.Timestamptz
-	ProcessedAt        pgtype.Timestamptz
-	ExpiresAt          time.Time
-	DeletedAt          pgtype.Timestamptz
-}
-
 type Photo struct {
 	ID                 uuid.UUID
 	OwnerUserID        uuid.UUID
@@ -110,10 +91,20 @@ type Session struct {
 }
 
 type User struct {
-	ID              uuid.UUID
-	UsernameKey     string
-	UsernameDisplay string
-	PasswordHash    string
-	CreatedAt       pgtype.Timestamptz
-	AvatarID        pgtype.UUID
+	ID                uuid.UUID
+	UsernameKey       string
+	UsernameDisplay   string
+	PasswordHash      string
+	CreatedAt         pgtype.Timestamptz
+	About             pgtype.Text
+	ProfileVisibility string
+	UpdatedAt         time.Time
+}
+
+type UserAvatar struct {
+	UserID      uuid.UUID
+	Bucket      string
+	ObjectKey   string
+	ContentType string
+	UploadedAt  time.Time
 }
