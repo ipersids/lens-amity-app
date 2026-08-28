@@ -40,9 +40,7 @@ CREATE TABLE IF NOT EXISTS photos (
       content_type IN (
         'image/jpeg',
         'image/png',
-        'image/webp',
-        'image/heic',
-        'image/heif'
+        'image/webp'
       )
     ),
   CONSTRAINT photos_size_positive
