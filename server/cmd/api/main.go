@@ -7,8 +7,8 @@ import (
 	"lensamity/internal/db"
 	"lensamity/internal/handler"
 	"lensamity/internal/middleware"
-	"lensamity/internal/photo"
 	"lensamity/internal/storage"
+	"lensamity/internal/uploads"
 	"lensamity/internal/users"
 	"log/slog"
 	"net/http"
@@ -82,7 +82,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	photoService, err := photo.NewPhotoService(store, storage)
+	photoService, err := uploads.NewPhotoService(store, storage)
 	if err != nil {
 		slog.Error("photo service initialisation failed", "error", err)
 		os.Exit(1)

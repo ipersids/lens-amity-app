@@ -14,14 +14,16 @@ import (
 )
 
 var (
-	ErrInternal            = errors.New("internal error")
-	ErrUnsupportedFileType = errors.New("unsupported file type")
-	ErrFileTooLarge        = errors.New("file size exceeded limits")
-	ErrPhotoNotFound       = errors.New("photo not found")
-	ErrPhotoNotCompletable = errors.New("photo cannot be completed")
-	ErrUploadNotFound      = errors.New("uploaded object not found")
-	ErrPhotoAlreadyExists  = errors.New("photo already exists for date")
-	ErrDateOutOfRange      = errors.New("date must be within the last 7 days including today")
+	ErrInternal              = errors.New("internal error")
+	ErrUnsupportedFileType   = errors.New("unsupported file type")
+	ErrFileTooLarge          = errors.New("file size exceeded limits")
+	ErrPhotoNotFound         = errors.New("photo not found")
+	ErrPhotoNotCompletable   = errors.New("photo cannot be completed")
+	ErrUploadNotFound        = errors.New("uploaded object not found")
+	ErrUploadMetadataMissing = errors.New("uploaded object is missing content type or length")
+	ErrUploadSizeMismatch    = errors.New("uploaded object size mismatch")
+	ErrPhotoAlreadyExists    = errors.New("photo already exists for date")
+	ErrDateOutOfRange        = errors.New("date must be within the last 7 days including today")
 )
 
 const maxImageBytes int64 = 10 * 1024 * 1024
@@ -37,6 +39,8 @@ type photoStore interface {
 	pendingPhotoUpload(ctx context.Context, p pendingPhotoUploadParams) (*pendingPhotoUploadData, error)
 	completePendingPhotoUpload(ctx context.Context, p completePendingPhotoUploadParams) error
 	failPendingPhotoUpload(ctx context.Context, p failPendingPhotoUploadParams) error
+	headObject(ctx context.Context, bucket string, key string) (*objectHeadData, error)
+	deleteObject(ctx context.Context, bucket string, key string) error
 }
 
 func NewPhotoService(store *db.Store, s3Client *storage.Client) (*PhotoService, error) {
@@ -64,7 +68,12 @@ type UploadPhotoIntentParams struct {
 	Description string
 }
 
-func (ps *PhotoService) UploadPhotoIntent(ctx context.Context, p UploadPhotoIntentParams) (*v4.PresignedHTTPRequest, error) {
+type UploadPhotoIntentResult struct {
+	PresignedRequest *v4.PresignedHTTPRequest
+	PhotoID          uuid.UUID
+}
+
+func (ps *PhotoService) UploadPhotoIntent(ctx context.Context, p UploadPhotoIntentParams) (*UploadPhotoIntentResult, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("%w: nil context", ErrInternal)
 	}
@@ -112,7 +121,87 @@ func (ps *PhotoService) UploadPhotoIntent(ctx context.Context, p UploadPhotoInte
 		return nil, fmt.Errorf("%w: create pending photo upload: %w", ErrInternal, err)
 	}
 
-	return req, nil
+	return &UploadPhotoIntentResult{
+		PresignedRequest: req,
+		PhotoID:          photoID,
+	}, nil
+}
+
+type UploadPhotoCompleteParams struct {
+	ID          uuid.UUID
+	OwnerUserID uuid.UUID
+}
+
+func (ps *PhotoService) UploadPhotoComplete(ctx context.Context, p UploadPhotoCompleteParams) error {
+	if ctx == nil {
+		return fmt.Errorf("%w: nil context", ErrInternal)
+	}
+
+	pendingUploadData, err := ps.repo.pendingPhotoUpload(ctx, pendingPhotoUploadParams{ID: p.ID, OwnerUserID: p.OwnerUserID})
+	if err != nil {
+		return fmt.Errorf("%w: complete photo upload: %w", ErrInternal, err)
+	}
+
+	if pendingUploadData.Status != string(db.UploadStatusProcessing) {
+		return fmt.Errorf("%w: complete photo upload: unexpected status %s", ErrInternal, pendingUploadData.Status)
+	}
+
+	fail := func(reason string, cause error, deleteObject bool) error {
+		if err := ps.repo.failPendingPhotoUpload(ctx, failPendingPhotoUploadParams{
+			ID:          pendingUploadData.ID,
+			OwnerUserID: pendingUploadData.OwnerUserID,
+			Reason:      reason,
+		}); err != nil {
+			return errors.Join(cause, fmt.Errorf("%w: mark photo upload failed: %w", ErrInternal, err))
+		}
+
+		if deleteObject {
+			if err := ps.repo.deleteObject(ctx, pendingUploadData.Bucket, pendingUploadData.Key); err != nil {
+				return errors.Join(cause, fmt.Errorf("%w: delete failed photo upload object: %w", ErrInternal, err))
+			}
+		}
+
+		return cause
+	}
+
+	headData, err := ps.repo.headObject(ctx, pendingUploadData.Bucket, pendingUploadData.Key)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrUploadNotFound):
+			return fail("upload_not_found", err, false)
+		case errors.Is(err, ErrUploadMetadataMissing):
+			return fail("missing_object_metadata", err, true)
+		default:
+			return fail("head_object_failed", err, true)
+		}
+	}
+
+	if headData.Size != pendingUploadData.Size {
+		return fail("size_mismatch", ErrUploadSizeMismatch, true)
+	}
+	if headData.Size > maxImageBytes {
+		return fail("file_too_large", ErrFileTooLarge, true)
+	}
+
+	// @TODO: validate real bytes, check actual image type, dimension, and encode a processed webp
+
+	contentType, _, err := normalizeImageContentType(headData.ContentType)
+	if err != nil {
+		return fail("unsupported_content_type", err, true)
+	}
+	if contentType != pendingUploadData.ContentType {
+		return fail("content_type_mismatch", ErrUnsupportedFileType, true)
+	}
+
+	if err := ps.repo.completePendingPhotoUpload(ctx, completePendingPhotoUploadParams{
+		ID:                 p.ID,
+		OwnerUserID:        p.OwnerUserID,
+		ObjectKeyProcessed: []byte("{}"),
+	}); err != nil {
+		return fmt.Errorf("%w: complete photo upload: mark ready: %w", ErrInternal, err)
+	}
+
+	return nil
 }
 
 type validatedUploadPhotoIntentParams struct {
@@ -174,10 +263,6 @@ func normalizeImageContentType(contentType string) (string, string, error) {
 		return mediaType, "png", nil
 	case "image/webp":
 		return mediaType, "webp", nil
-	case "image/heic":
-		return mediaType, "heic", nil
-	case "image/heif":
-		return mediaType, "heif", nil
 	default:
 		return "", "", ErrUnsupportedFileType
 	}

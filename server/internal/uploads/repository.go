@@ -11,7 +11,10 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -57,6 +60,59 @@ func (r *uploadRepository) presignPutObject(ctx context.Context, p presignPutObj
 		return nil, fmt.Errorf("presign put object: %w", err)
 	}
 	return req, nil
+}
+
+type objectHeadData struct {
+	ContentType string
+	Size        int64
+}
+
+func (r *uploadRepository) headObject(ctx context.Context, bucket string, key string) (*objectHeadData, error) {
+	head, err := r.s3.Client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
+	if err != nil {
+		if isObjectNotFound(err) {
+			return nil, ErrUploadNotFound
+		}
+		return nil, fmt.Errorf("s3 head object: %w", err)
+	}
+
+	if head.ContentType == nil || head.ContentLength == nil || *head.ContentLength <= 0 {
+		return nil, ErrUploadMetadataMissing
+	}
+
+	return &objectHeadData{ContentType: *head.ContentType, Size: *head.ContentLength}, nil
+}
+
+func (r *uploadRepository) deleteObject(ctx context.Context, bucket string, key string) error {
+	_, err := r.s3.Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		if isObjectNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("s3 delete object: %w", err)
+	}
+	return nil
+}
+
+func isObjectNotFound(err error) bool {
+	var notFound *s3types.NotFound
+	if errors.As(err, &notFound) {
+		return true
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "NotFound", "NoSuchKey", "404":
+			return true
+		}
+	}
+
+	var responseErr *awshttp.ResponseError
+	return errors.As(err, &responseErr) && responseErr.HTTPStatusCode() == 404
 }
 
 type createPendingPhotoUploadParams struct {
@@ -159,11 +215,11 @@ func (r *uploadRepository) completePendingPhotoUpload(ctx context.Context, p com
 		ObjectKeyProcessed: p.ObjectKeyProcessed,
 		Width: pgtype.Int4{
 			Int32: p.Width,
-			Valid: true,
+			Valid: p.Width > 0 && p.Height > 0,
 		},
 		Height: pgtype.Int4{
 			Int32: p.Height,
-			Valid: true,
+			Valid: p.Width > 0 && p.Height > 0,
 		},
 	}
 
