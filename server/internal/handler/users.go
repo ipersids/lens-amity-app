@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"lensamity/internal/middleware"
 	"lensamity/internal/users"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type UserHandler struct {
@@ -24,9 +27,21 @@ func NewUserHandler(userService *users.UserService) (*UserHandler, error) {
 	}, nil
 }
 
+type AvatarResponse struct {
+	URL    string      `json:"url"`
+	Method string      `json:"method"`
+	Header http.Header `json:"header"`
+}
+
 type GetUserProfileResponse struct {
-	Username    string
-	DisplayName string
+	Username      string          `json:"username"`
+	DisplayName   string          `json:"displayName"`
+	PhotoCount    int64           `json:"photoCount"`
+	CanEdit       bool            `json:"canEdit"`
+	CanViewPhotos bool            `json:"canViewPhotos"`
+	JoinedAt      time.Time       `json:"joinedAt"`
+	Avatar        *AvatarResponse `json:"avatar,omitempty"`
+	About         string          `json:"about,omitempty"`
 }
 
 func (h *UserHandler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +63,31 @@ func (h *UserHandler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = json.NewEncoder(w).Encode(GetUserProfileResponse{Username: user.UsernameKey, DisplayName: user.UsernameDisplay})
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	profile := GetUserProfileResponse{
+		Username:      user.Username,
+		DisplayName:   user.DisplayName,
+		About:         user.About,
+		PhotoCount:    user.PhotoCount,
+		CanEdit:       user.ID == userID,
+		CanViewPhotos: user.Visibility == "public",
+		JoinedAt:      user.JoinedAt,
+	}
+
+	if user.AvatarPresignedRequest != nil {
+		profile.Avatar = &AvatarResponse{
+			Method: user.AvatarPresignedRequest.Method,
+			URL:    user.AvatarPresignedRequest.URL,
+			Header: user.AvatarPresignedRequest.SignedHeader,
+		}
+	}
+
+	err = json.NewEncoder(w).Encode(profile)
 
 	if err != nil {
 		slog.Error("UserProfile handler: failed encode response", "error", err)

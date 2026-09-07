@@ -11,10 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
-	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/aws/smithy-go"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -70,7 +67,7 @@ type objectHeadData struct {
 func (r *uploadRepository) headObject(ctx context.Context, bucket string, key string) (*objectHeadData, error) {
 	head, err := r.s3.Client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
 	if err != nil {
-		if isObjectNotFound(err) {
+		if storage.IsObjectNotFound(err) {
 			return nil, ErrUploadNotFound
 		}
 		return nil, fmt.Errorf("s3 head object: %w", err)
@@ -89,30 +86,12 @@ func (r *uploadRepository) deleteObject(ctx context.Context, bucket string, key 
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		if isObjectNotFound(err) {
+		if storage.IsObjectNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("s3 delete object: %w", err)
 	}
 	return nil
-}
-
-func isObjectNotFound(err error) bool {
-	var notFound *s3types.NotFound
-	if errors.As(err, &notFound) {
-		return true
-	}
-
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		switch apiErr.ErrorCode() {
-		case "NotFound", "NoSuchKey", "404":
-			return true
-		}
-	}
-
-	var responseErr *awshttp.ResponseError
-	return errors.As(err, &responseErr) && responseErr.HTTPStatusCode() == 404
 }
 
 type createPendingPhotoUploadParams struct {
