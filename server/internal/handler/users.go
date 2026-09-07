@@ -24,9 +24,20 @@ func NewUserHandler(userService *users.UserService) (*UserHandler, error) {
 	}, nil
 }
 
+type AvatarResponse struct {
+	URL    string      `json:"url"`
+	Method string      `json:"method"`
+	Header http.Header `json:"header"`
+}
+
 type GetUserProfileResponse struct {
-	Username    string
-	DisplayName string
+	Username    string          `json:"username"`
+	DisplayName string          `json:"display_name"`
+	PhotoCount  int64           `json:"photo_count"`
+	Visibility  string          `json:"visibility"`
+	JoinedAt    time.Time       `json:"joined_at"`
+	Avatar      *AvatarResponse `json:"avatar,omitempty"`
+	About       string          `json:"about,omitempty"`
 }
 
 func (h *UserHandler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +59,24 @@ func (h *UserHandler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = json.NewEncoder(w).Encode(GetUserProfileResponse{Username: user.UsernameKey, DisplayName: user.UsernameDisplay})
+	profile := GetUserProfileResponse{
+		Username:    user.Username,
+		DisplayName: user.DisplayName,
+		About:       user.About,
+		PhotoCount:  user.PhotoCount,
+		Visibility:  user.Visibility,
+		JoinedAt:    user.JoinedAt,
+	}
+
+	if user.AvatarPresignedRequest != nil {
+		profile.Avatar = &AvatarResponse{
+			Method: user.AvatarPresignedRequest.Method,
+			URL:    user.AvatarPresignedRequest.URL,
+			Header: user.AvatarPresignedRequest.SignedHeader,
+		}
+	}
+
+	err = json.NewEncoder(w).Encode(profile)
 
 	if err != nil {
 		slog.Error("UserProfile handler: failed encode response", "error", err)

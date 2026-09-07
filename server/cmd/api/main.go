@@ -76,7 +76,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	userService, err := users.NewUserService(store)
+	userService, err := users.NewUserService(store, storage)
 	if err != nil {
 		slog.Error("user service initialisation failed", "error", err)
 		os.Exit(1)

@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createUser = `-- name: CreateUser :one
@@ -65,18 +66,52 @@ func (q *Queries) GetUserDataForLogin(ctx context.Context, usernameKey string) (
 }
 
 const getUserProfile = `-- name: GetUserProfile :one
-SELECT username_key, username_display FROM users
-WHERE username_key = $1
+SELECT
+  u.id,
+  u.username_key,
+  u.username_display,
+  u.about,
+  u.profile_visibility,
+  u.created_at AS joined_at,
+  a.bucket AS avatar_bucket,
+  a.object_key AS avatar_object_key,
+  (
+    SELECT COUNT(p.id)
+    FROM photos p
+    WHERE p.owner_user_id = u.id
+      AND p.status = 'ready'
+      AND p.deleted_at IS NULL
+  ) AS photo_count
+FROM users u
+LEFT JOIN user_avatars a ON u.id = a.user_id
+WHERE u.username_key = $1
 `
 
 type GetUserProfileRow struct {
-	UsernameKey     string
-	UsernameDisplay string
+	ID                uuid.UUID
+	UsernameKey       string
+	UsernameDisplay   string
+	About             pgtype.Text
+	ProfileVisibility string
+	JoinedAt          pgtype.Timestamptz
+	AvatarBucket      pgtype.Text
+	AvatarObjectKey   pgtype.Text
+	PhotoCount        int64
 }
 
 func (q *Queries) GetUserProfile(ctx context.Context, usernameKey string) (GetUserProfileRow, error) {
 	row := q.db.QueryRow(ctx, getUserProfile, usernameKey)
 	var i GetUserProfileRow
-	err := row.Scan(&i.UsernameKey, &i.UsernameDisplay)
+	err := row.Scan(
+		&i.ID,
+		&i.UsernameKey,
+		&i.UsernameDisplay,
+		&i.About,
+		&i.ProfileVisibility,
+		&i.JoinedAt,
+		&i.AvatarBucket,
+		&i.AvatarObjectKey,
+		&i.PhotoCount,
+	)
 	return i, err
 }

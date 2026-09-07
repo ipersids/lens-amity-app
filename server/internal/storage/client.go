@@ -5,8 +5,11 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 )
 
 type Config struct {
@@ -88,4 +91,22 @@ func (c Config) validate() error {
 		return errors.New("storage: bucket is required")
 	}
 	return nil
+}
+
+func IsObjectNotFound(err error) bool {
+	var notFound *s3types.NotFound
+	if errors.As(err, &notFound) {
+		return true
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "NotFound", "NoSuchKey", "404":
+			return true
+		}
+	}
+
+	var responseErr *awshttp.ResponseError
+	return errors.As(err, &responseErr) && responseErr.HTTPStatusCode() == 404
 }
