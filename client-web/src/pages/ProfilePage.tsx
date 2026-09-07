@@ -1,48 +1,51 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
-import { profilePhotosList } from "../features/photos";
 import {
   ProfileHeader,
   ProfileNotAvailable,
   ProfilePhotos,
   ProfileShell,
 } from "../features/profile";
+import usersService from "../services/users";
 
 const ProfilePage = () => {
   const { username } = useParams<{ username: string }>();
-  const [profileUsername, setProfileUsername] = useState<string | null>(username ?? null);
+  const {
+    isPending,
+    isError,
+    data: user,
+  } = useQuery({
+    queryKey: ["profile", username],
+    queryFn: () => usersService.getUserProfile(username ?? ""),
+    enabled: !!username,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    retry: 1,
+  });
 
-  useEffect(() => {
-    if (!username) return;
-    setProfileUsername(username);
-  }, [username]);
-
-  if (!profileUsername) {
+  if (!username || isError) {
     return <ProfileNotAvailable />;
   }
 
-  const displayName = profileUsername;
-  const about =
-    "Collecting small moments, soft light, favorite places, and photos worth coming back to.";
-  const avatarURL = "https://picsum.photos/seed/face/900/900";
-  const canEdit = false;
-  const canViewPhotos = true;
+  if (isPending || !user) {
+    return null;
+  }
 
   return (
     <ProfileShell>
       <ProfileHeader
         profile={{
-          username: profileUsername,
-          displayName: displayName,
-          photoCount: profilePhotosList.length,
-          about: about,
-          avatarURL: avatarURL,
-          canEdit: canEdit,
-          canViewPhotos: canViewPhotos,
+          username: user.username,
+          displayName: user.displayName,
+          photoCount: user.photoCount,
+          about: user.about,
+          avatarURL: user.avatar?.url,
+          canEdit: user.canEdit,
+          canViewPhotos: user.canViewPhotos,
         }}
       />
 
-      <ProfilePhotos username={profileUsername} canViewPhotos={canViewPhotos} />
+      <ProfilePhotos username={username} canViewPhotos={user.canViewPhotos} />
     </ProfileShell>
   );
 };
