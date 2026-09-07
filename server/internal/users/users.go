@@ -10,6 +10,7 @@ import (
 	"time"
 
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -40,6 +41,7 @@ var (
 )
 
 type GetUserProfileResult struct {
+	ID                     uuid.UUID
 	Username               string
 	DisplayName            string
 	About                  string
@@ -59,6 +61,7 @@ func (s *UserService) GetUserProfile(ctx context.Context, username string) (*Get
 	}
 
 	result := &GetUserProfileResult{
+		ID:          profile.ID,
 		Username:    profile.UsernameKey,
 		DisplayName: profile.UsernameDisplay,
 		PhotoCount:  profile.PhotoCount,

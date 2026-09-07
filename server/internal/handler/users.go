@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"lensamity/internal/middleware"
 	"lensamity/internal/users"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type UserHandler struct {
@@ -31,13 +34,14 @@ type AvatarResponse struct {
 }
 
 type GetUserProfileResponse struct {
-	Username    string          `json:"username"`
-	DisplayName string          `json:"display_name"`
-	PhotoCount  int64           `json:"photo_count"`
-	Visibility  string          `json:"visibility"`
-	JoinedAt    time.Time       `json:"joined_at"`
-	Avatar      *AvatarResponse `json:"avatar,omitempty"`
-	About       string          `json:"about,omitempty"`
+	Username      string          `json:"username"`
+	DisplayName   string          `json:"displayName"`
+	PhotoCount    int64           `json:"photoCount"`
+	CanEdit       bool            `json:"canEdit"`
+	CanViewPhotos bool            `json:"canViewPhotos"`
+	JoinedAt      time.Time       `json:"joinedAt"`
+	Avatar        *AvatarResponse `json:"avatar,omitempty"`
+	About         string          `json:"about,omitempty"`
 }
 
 func (h *UserHandler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
@@ -59,13 +63,20 @@ func (h *UserHandler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
 	profile := GetUserProfileResponse{
-		Username:    user.Username,
-		DisplayName: user.DisplayName,
-		About:       user.About,
-		PhotoCount:  user.PhotoCount,
-		Visibility:  user.Visibility,
-		JoinedAt:    user.JoinedAt,
+		Username:      user.Username,
+		DisplayName:   user.DisplayName,
+		About:         user.About,
+		PhotoCount:    user.PhotoCount,
+		CanEdit:       user.ID == userID,
+		CanViewPhotos: user.Visibility == "public",
+		JoinedAt:      user.JoinedAt,
 	}
 
 	if user.AvatarPresignedRequest != nil {
