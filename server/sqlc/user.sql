@@ -32,3 +32,27 @@ RETURNING username_key, username_display;
 -- name: GetUserDataForLogin :one
 SELECT id, username_key, username_display, password_hash FROM users
 WHERE username_key = sqlc.arg(username_key);
+
+-- name: GetUserAccessProfile :one
+SELECT id, profile_visibility
+FROM users
+WHERE username_key = sqlc.arg(username_key);
+
+-- name: ListUserPhotosFirstPage :many
+SELECT photos.*
+FROM photos
+WHERE owner_user_id = sqlc.arg(user_id)
+  AND status = 'ready'
+  AND deleted_at IS NULL
+ORDER BY photo_date DESC, id DESC
+LIMIT sqlc.arg(limit_count);
+
+-- name: ListUserPhotosAfterCursor :many
+SELECT photos.*
+FROM photos
+WHERE owner_user_id = sqlc.arg(user_id)
+  AND status = 'ready'
+  AND deleted_at IS NULL
+  AND (photo_date, id) < (sqlc.arg(cursor_photo_date)::date, sqlc.arg(cursor_id)::uuid)
+ORDER BY photo_date DESC, id DESC
+LIMIT sqlc.arg(limit_count);

@@ -41,6 +41,24 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 	return i, err
 }
 
+const getUserAccessProfile = `-- name: GetUserAccessProfile :one
+SELECT id, profile_visibility
+FROM users
+WHERE username_key = $1
+`
+
+type GetUserAccessProfileRow struct {
+	ID                uuid.UUID
+	ProfileVisibility string
+}
+
+func (q *Queries) GetUserAccessProfile(ctx context.Context, usernameKey string) (GetUserAccessProfileRow, error) {
+	row := q.db.QueryRow(ctx, getUserAccessProfile, usernameKey)
+	var i GetUserAccessProfileRow
+	err := row.Scan(&i.ID, &i.ProfileVisibility)
+	return i, err
+}
+
 const getUserDataForLogin = `-- name: GetUserDataForLogin :one
 SELECT id, username_key, username_display, password_hash FROM users
 WHERE username_key = $1
@@ -114,4 +132,122 @@ func (q *Queries) GetUserProfile(ctx context.Context, usernameKey string) (GetUs
 		&i.PhotoCount,
 	)
 	return i, err
+}
+
+const listUserPhotosAfterCursor = `-- name: ListUserPhotosAfterCursor :many
+SELECT photos.id, photos.owner_user_id, photos.status, photos.failure_reason, photos.bucket, photos.object_key_original, photos.object_key_processed, photos.content_type, photos.size, photos.width, photos.height, photos.photo_date, photos.title, photos.description, photos.created_at, photos.uploaded_at, photos.processed_at, photos.expires_at, photos.deleted_at
+FROM photos
+WHERE owner_user_id = $1
+  AND status = 'ready'
+  AND deleted_at IS NULL
+  AND (photo_date, id) < ($2::date, $3::uuid)
+ORDER BY photo_date DESC, id DESC
+LIMIT $4
+`
+
+type ListUserPhotosAfterCursorParams struct {
+	UserID          uuid.UUID
+	CursorPhotoDate pgtype.Date
+	CursorID        uuid.UUID
+	LimitCount      int32
+}
+
+func (q *Queries) ListUserPhotosAfterCursor(ctx context.Context, arg ListUserPhotosAfterCursorParams) ([]Photo, error) {
+	rows, err := q.db.Query(ctx, listUserPhotosAfterCursor,
+		arg.UserID,
+		arg.CursorPhotoDate,
+		arg.CursorID,
+		arg.LimitCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Photo
+	for rows.Next() {
+		var i Photo
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.Status,
+			&i.FailureReason,
+			&i.Bucket,
+			&i.ObjectKeyOriginal,
+			&i.ObjectKeyProcessed,
+			&i.ContentType,
+			&i.Size,
+			&i.Width,
+			&i.Height,
+			&i.PhotoDate,
+			&i.Title,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UploadedAt,
+			&i.ProcessedAt,
+			&i.ExpiresAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserPhotosFirstPage = `-- name: ListUserPhotosFirstPage :many
+SELECT photos.id, photos.owner_user_id, photos.status, photos.failure_reason, photos.bucket, photos.object_key_original, photos.object_key_processed, photos.content_type, photos.size, photos.width, photos.height, photos.photo_date, photos.title, photos.description, photos.created_at, photos.uploaded_at, photos.processed_at, photos.expires_at, photos.deleted_at
+FROM photos
+WHERE owner_user_id = $1
+  AND status = 'ready'
+  AND deleted_at IS NULL
+ORDER BY photo_date DESC, id DESC
+LIMIT $2
+`
+
+type ListUserPhotosFirstPageParams struct {
+	UserID     uuid.UUID
+	LimitCount int32
+}
+
+func (q *Queries) ListUserPhotosFirstPage(ctx context.Context, arg ListUserPhotosFirstPageParams) ([]Photo, error) {
+	rows, err := q.db.Query(ctx, listUserPhotosFirstPage, arg.UserID, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Photo
+	for rows.Next() {
+		var i Photo
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.Status,
+			&i.FailureReason,
+			&i.Bucket,
+			&i.ObjectKeyOriginal,
+			&i.ObjectKeyProcessed,
+			&i.ContentType,
+			&i.Size,
+			&i.Width,
+			&i.Height,
+			&i.PhotoDate,
+			&i.Title,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UploadedAt,
+			&i.ProcessedAt,
+			&i.ExpiresAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
