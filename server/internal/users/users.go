@@ -2,11 +2,14 @@ package users
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"lensamity/internal/db"
 	"lensamity/internal/storage"
 	"log/slog"
+	"net/http"
 	"time"
 
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
@@ -19,8 +22,10 @@ type UserService struct {
 }
 
 type usersStore interface {
-	avatarURL(ctx context.Context, p avatarURLparams) (*v4.PresignedHTTPRequest, error)
+	presignURL(ctx context.Context, p presignURLparams) (*v4.PresignedHTTPRequest, error)
 	profile(ctx context.Context, p profileParams) (*db.GetUserProfileRow, error)
+	accessProfile(ctx context.Context, p profileParams) (*db.GetUserAccessProfileRow, error)
+	photosPage(ctx context.Context, p photosPageParams) ([]db.Photo, error)
 }
 
 func NewUserService(store *db.Store, s3Client *storage.Client) (*UserService, error) {
@@ -37,7 +42,9 @@ func NewUserService(store *db.Store, s3Client *storage.Client) (*UserService, er
 }
 
 var (
-	ErrorGetUserProfile = errors.New("user profile not found")
+	ErrorGetUserProfile   = errors.New("user profile not found")
+	ErrorGetUserPhotoPage = errors.New("photos not found")
+	ErrorInvalidCursor    = errors.New("invalid cursor")
 )
 
 type GetUserProfileResult struct {
@@ -77,9 +84,10 @@ func (s *UserService) GetUserProfile(ctx context.Context, username string) (*Get
 		return result, nil
 	}
 
-	avatarReq, err := s.repo.avatarURL(ctx, avatarURLparams{
-		Bucket: profile.AvatarBucket.String,
-		Key:    profile.AvatarObjectKey.String,
+	avatarReq, err := s.repo.presignURL(ctx, presignURLparams{
+		Bucket:    profile.AvatarBucket.String,
+		Key:       profile.AvatarObjectKey.String,
+		ExpiresAt: time.Now().Add(time.Hour),
 	})
 	if err != nil {
 		if storage.IsObjectNotFound(err) {
@@ -92,4 +100,178 @@ func (s *UserService) GetUserProfile(ctx context.Context, username string) (*Get
 	result.AvatarPresignedRequest = avatarReq
 
 	return result, nil
+}
+
+type GetUserPhotosParams struct {
+	OwnerUsername string
+	ViewerID      uuid.UUID
+	Limit         int32
+	Cursor        string
+}
+
+type GetUserPhotosResult struct {
+	Items         []Photo
+	NextCursor    string
+	CanEdit       bool
+	CanViewPhotos bool
+}
+
+type PhotoRequest struct {
+	URL     string      `json:"url"`
+	Method  string      `json:"method"`
+	Header  http.Header `json:"header"`
+	IsReady bool        `json:"isReady"`
+}
+
+type Photo struct {
+	ID          uuid.UUID    `json:"photoID"`
+	Title       string       `json:"title"`
+	Description string       `json:"description"`
+	Date        time.Time    `json:"date"`
+	Request     PhotoRequest `json:"request"`
+}
+
+func (s *UserService) GetUserPhotos(ctx context.Context, p GetUserPhotosParams) (*GetUserPhotosResult, error) {
+	accessProfile, err := s.repo.accessProfile(ctx, profileParams{Username: p.OwnerUsername})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %w", ErrorGetUserProfile, err)
+		}
+		return nil, fmt.Errorf("get user profile: %w", err)
+	}
+
+	result := GetUserPhotosResult{
+		CanEdit:       p.ViewerID == accessProfile.ID,
+		CanViewPhotos: canViewPhotos(owner{ID: accessProfile.ID, Visibility: accessProfile.ProfileVisibility}, p.ViewerID),
+	}
+
+	if !result.CanViewPhotos {
+		return &result, nil
+	}
+
+	photoPageParams := photosPageParams{
+		OwnerID:  accessProfile.ID,
+		Limit:    p.Limit + 1,
+		CursorID: uuid.Nil,
+	}
+
+	if p.Cursor != "" {
+		cursorDate, cursorID, err := decodePhotoCursor(p.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		photoPageParams.CursorDate = cursorDate
+		photoPageParams.CursorID = cursorID
+	}
+
+	photos, err := s.repo.photosPage(ctx, photoPageParams)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %w", ErrorGetUserProfile, err)
+		}
+		return nil, fmt.Errorf("get user photos: %w", err)
+	}
+
+	if len(photos) > int(p.Limit) {
+		photos = photos[:p.Limit]
+		last := photos[len(photos)-1]
+		nextCursor, err := encodePhotoCursor(last.PhotoDate.Time, last.ID)
+		if err != nil {
+			return nil, err
+		}
+		result.NextCursor = nextCursor
+	}
+
+	result.Items = make([]Photo, 0, len(photos))
+
+	for _, photo := range photos {
+		item := Photo{
+			ID:          photo.ID,
+			Title:       photo.Title.String,
+			Description: photo.Description.String,
+			Date:        photo.PhotoDate.Time,
+			Request: PhotoRequest{
+				IsReady: false,
+			},
+		}
+
+		photoReq, err := s.repo.presignURL(ctx, presignURLparams{
+			Bucket:    photo.Bucket,
+			Key:       photo.ObjectKeyOriginal,
+			ExpiresAt: time.Now().Add(time.Hour),
+		})
+		if err != nil {
+			if storage.IsObjectNotFound(err) {
+				slog.Error("photo object object not found", "error", err)
+				result.Items = append(result.Items, item)
+				continue
+			}
+			return nil, fmt.Errorf("get photo object url: %w", err)
+		}
+
+		item.Request = PhotoRequest{
+			IsReady: true,
+			URL:     photoReq.URL,
+			Method:  photoReq.Method,
+			Header:  photoReq.SignedHeader,
+		}
+		result.Items = append(result.Items, item)
+	}
+
+	return &result, nil
+}
+
+type owner struct {
+	ID         uuid.UUID
+	Visibility string
+}
+
+func canViewPhotos(owner owner, viewerID uuid.UUID) bool {
+	return owner.Visibility == "public" || owner.ID == viewerID
+}
+
+type photoCursor struct {
+	PhotoDate string    `json:"photoDate"`
+	ID        uuid.UUID `json:"id"`
+}
+
+func encodePhotoCursor(photoDate time.Time, id uuid.UUID) (string, error) {
+	payload := photoCursor{
+		PhotoDate: photoDate.Format(time.DateOnly),
+		ID:        id,
+	}
+
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("encode photo page cursor: %w", err)
+	}
+
+	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+func decodePhotoCursor(cursor string) (time.Time, uuid.UUID, error) {
+	if cursor == "" {
+		return time.Time{}, uuid.Nil, ErrorInvalidCursor
+	}
+
+	raw, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return time.Time{}, uuid.Nil, fmt.Errorf("%w: %w", ErrorInvalidCursor, err)
+	}
+
+	var payload photoCursor
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return time.Time{}, uuid.Nil, fmt.Errorf("%w json: %w", ErrorInvalidCursor, err)
+	}
+
+	photoDate, err := time.Parse(time.DateOnly, payload.PhotoDate)
+	if err != nil {
+		return time.Time{}, uuid.Nil, fmt.Errorf("%w date: %w", ErrorInvalidCursor, err)
+	}
+
+	if payload.ID == uuid.Nil {
+		return time.Time{}, uuid.Nil, fmt.Errorf("%w: empty id", ErrorInvalidCursor)
+	}
+
+	return photoDate, payload.ID, nil
 }
