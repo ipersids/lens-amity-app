@@ -35,6 +35,7 @@ func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware fun
 
 	// 2. @TODO Context-aware Profile route
 	mux.HandleFunc("GET /api/users/{username}", authRequiredMiddleware(h.user.GetUserProfile))
+	mux.HandleFunc("GET /api/users/{username}/photos", authRequiredMiddleware(h.user.GetUserPhotos))
 
 	// 3. Strict Session Protected routes
 	mux.HandleFunc("PUT /api/photos/upload", authRequiredMiddleware(h.photo.UploadIntent))

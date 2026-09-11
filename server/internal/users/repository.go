@@ -10,6 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type usersRepository struct {
@@ -32,16 +34,17 @@ func newUsersRepository(store *db.Store, s3 *storage.Client) (*usersRepository, 
 	}, nil
 }
 
-type avatarURLparams struct {
-	Bucket string
-	Key    string
+type presignURLparams struct {
+	Bucket    string
+	Key       string
+	ExpiresAt time.Time
 }
 
-func (r *usersRepository) avatarURL(ctx context.Context, p avatarURLparams) (*v4.PresignedHTTPRequest, error) {
+func (r *usersRepository) presignURL(ctx context.Context, p presignURLparams) (*v4.PresignedHTTPRequest, error) {
 	req, err := r.s3.Presign.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket:          aws.String(p.Bucket),
 		Key:             aws.String(p.Key),
-		ResponseExpires: aws.Time(time.Now().Add(time.Hour)),
+		ResponseExpires: aws.Time(p.ExpiresAt),
 	})
 	if err != nil {
 		return nil, err
@@ -61,4 +64,48 @@ func (r *usersRepository) profile(ctx context.Context, p profileParams) (*db.Get
 	}
 
 	return &row, nil
+}
+
+func (r *usersRepository) accessProfile(ctx context.Context, p profileParams) (*db.GetUserAccessProfileRow, error) {
+	row, err := r.store.Queries.GetUserAccessProfile(ctx, p.Username)
+	if err != nil {
+		return nil, err
+	}
+
+	return &row, nil
+}
+
+type photosPageParams struct {
+	OwnerID    uuid.UUID
+	CursorDate time.Time
+	CursorID   uuid.UUID
+	Limit      int32
+}
+
+func (r *usersRepository) photosPage(ctx context.Context, p photosPageParams) ([]db.Photo, error) {
+	var rows []db.Photo
+	var err error
+
+	if p.CursorID != uuid.Nil {
+		rows, err = r.store.Queries.ListUserPhotosAfterCursor(ctx, db.ListUserPhotosAfterCursorParams{
+			UserID: p.OwnerID,
+			CursorPhotoDate: pgtype.Date{
+				Time:  p.CursorDate,
+				Valid: true,
+			},
+			CursorID:   p.CursorID,
+			LimitCount: p.Limit,
+		})
+	} else {
+		rows, err = r.store.Queries.ListUserPhotosFirstPage(ctx, db.ListUserPhotosFirstPageParams{
+			UserID:     p.OwnerID,
+			LimitCount: p.Limit,
+		})
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return rows, nil
 }
