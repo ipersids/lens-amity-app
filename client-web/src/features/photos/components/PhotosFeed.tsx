@@ -1,13 +1,16 @@
-import { profilePhotosList } from "../index";
+import type { Photo } from "../../../services/users";
 
-const PhotosFeed = ({ username }: { username: string }) => {
-  void username;
+const PhotosFeed = ({ photos }: { photos: Photo[] }) => {
+  if (!photos.length) {
+    return <p>No photos yet :)</p>;
+  }
+
   return (
     <ul className="profile-photos" aria-label="Profile photos">
-      {profilePhotosList.map((photo) => (
+      {photos.map((photo) => (
         <li className="profile-photo" key={photo.title}>
-          <a href={photo.imageUrl} aria-label={`${photo.title}, ${photo.date}`}>
-            <img src={photo.imageUrl} alt={photo.title} />
+          <a href={photo.request.url} aria-label={`${photo.title}, ${photo.date}`}>
+            <img src={photo.request.url} alt={photo.title} />
             <span className="profile-photo-name">{photo.title}</span>
             <time dateTime={photo.date}>{photo.date}</time>
           </a>
