@@ -8,7 +8,7 @@ const PhotosFeed = ({ photos }: { photos: Photo[] }) => {
   return (
     <ul className="profile-photos" aria-label="Profile photos">
       {photos.map((photo) => (
-        <li className="profile-photo" key={photo.title}>
+        <li className="profile-photo" key={photo.photoID}>
           <a href={photo.request.url} aria-label={`${photo.title}, ${photo.date}`}>
             <img src={photo.request.url} alt={photo.title} />
             <span className="profile-photo-name">{photo.title}</span>

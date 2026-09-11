@@ -24,25 +24,24 @@ const getUserProfile = async (username: string): Promise<UserProfileResponse> =>
 };
 
 export type Photo = {
-  id: string;
+  photoID: string;
   title: string;
   description: string;
   date: string;
   request: {
     url: string;
     method: string;
-    header: string;
+    header: Record<string, string[]>;
     isReady: boolean;
   };
 };
 
-type UserPhotosResponse = {
+export type UserPhotosResponse = {
   canEdit: boolean;
   canViewPhotos: boolean;
   photoCount: number;
-  items: [];
-  Photo;
-  nextCursor: string;
+  items: Photo[];
+  nextCursor?: string;
 };
 
 const getUserPhotos = async (
