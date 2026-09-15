@@ -1,0 +1,28 @@
+name: quality-check
+run-name: Running code quality check and tests by ${{ github.actor }}
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+  push:
+    branches: [main]
+
+jobs:
+  frontend_check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client-web
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Install pnpm
+        run: npm install -g pnpm@12.3.4
+      - name: Run Biome linter
+        run: pnpm run lint
+      - name: Run Biome format check
+        run: pnpm run format:check
