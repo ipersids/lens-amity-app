@@ -26,3 +26,30 @@ jobs:
         run: pnpm run lint
       - name: Run Biome format check
         run: pnpm run format:check
+
+  backend_test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Check Formatting
+        run: |
+          # If gofmt returns any file names, print them and exit with code 1
+          FORMAT_ISSUES=$(gofmt -l .)
+          if [ -n "$FORMAT_ISSUES" ]; then
+            echo "The following files have formatting issues:"
+            echo "$FORMAT_ISSUES"
+            echo "Run 'go fmt ./...' locally to fix them."
+            exit 1
+          fi
+      - name: Run Go vet
+        run: go vet ./...
+      - name: Run Go tests
+        run: go test ./...
