@@ -31,7 +31,8 @@ a {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -282,12 +283,14 @@ footer {
   font-size: 0.9rem;
 }
 
-.add-photo-page {
+.add-photo-page,
+.settings-page {
   display: grid;
   place-items: center;
 }
 
-.add-photo-form {
+.add-photo-form,
+.settings-form {
   display: grid;
   gap: 16px;
   width: min(100%, 520px);
@@ -297,22 +300,34 @@ footer {
   background: var(--surface);
 }
 
-.add-photo-form h1 {
+.add-photo-form h1,
+.settings-form h1 {
   margin: 0;
   font-size: 2rem;
 }
 
-.add-photo-form label {
+.settings-intro {
+  margin: -6px 0 12px;
+  color: var(--text);
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+
+.add-photo-form label,
+.settings-form label {
   display: grid;
   gap: 8px;
   font-weight: 700;
 }
 
 .add-photo-form input,
-.add-photo-form textarea {
+.add-photo-form textarea,
+.settings-form input,
+.settings-form textarea,
+.settings-form select {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 12px 14px;
   background: var(--surface-muted);
   color: var(--text);
@@ -321,7 +336,10 @@ footer {
 }
 
 .add-photo-form input:focus,
-.add-photo-form textarea:focus {
+.add-photo-form textarea:focus,
+.settings-form input:focus,
+.settings-form textarea:focus,
+.settings-form select:focus {
   border-color: var(--primary);
   background: var(--surface);
 }
@@ -388,7 +406,8 @@ footer {
   font-weight: 400;
 }
 
-.add-photo-form button {
+.add-photo-form button,
+.settings-form button {
   min-height: 44px;
   border: 0;
   border-radius: 999px;
@@ -399,13 +418,68 @@ footer {
   cursor: pointer;
 }
 
-.add-photo-form button:hover {
+.add-photo-form button:hover,
+.settings-form button:hover {
   background: var(--primary-hover);
 }
 
-.add-photo-form button:disabled {
+.add-photo-form button:disabled,
+.settings-form button:disabled {
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+.settings-photo-field {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-field-title {
+  font-weight: 700;
+}
+
+.settings-photo-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.settings-avatar-preview {
+  display: grid;
+  width: 86px;
+  height: 86px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-muted);
+  color: var(--primary);
+}
+
+.settings-avatar-preview svg {
+  width: 42px;
+}
+
+.settings-avatar-button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 14px;
+  padding: 0 22px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.settings-form .settings-avatar-button:hover {
+  background: var(--border);
+}
+
+.settings-photo-field input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .profile {

@@ -5,6 +5,7 @@ import AuthPage from "./pages/AuthPage";
 import MyProfilePageRedirect from "./pages/MyProfilePageRedirect";
 import ProfilePage from "./pages/ProfilePage";
 import ProtectedPage from "./pages/ProtectedPage";
+import SettingsPage from "./pages/SettingsPage";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
 
           <Route element={<ProtectedPage />}>
             <Route path="/profile" element={<MyProfilePageRedirect />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="/upload" element={<AddPhotoPage />} />
           </Route>
 
