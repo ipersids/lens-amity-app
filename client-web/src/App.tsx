@@ -1,5 +1,6 @@
-import { Route, Routes } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 import Layout from "./features/Layout";
+import { AccountSettings, ProfileSettings } from "./features/settings";
 import AddPhotoPage from "./pages/AddPhotoPage";
 import AuthPage from "./pages/AuthPage";
 import MyProfilePageRedirect from "./pages/MyProfilePageRedirect";
@@ -18,7 +19,11 @@ function App() {
 
           <Route element={<ProtectedPage />}>
             <Route path="/profile" element={<MyProfilePageRedirect />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/settings" element={<SettingsPage />}>
+              <Route index element={<Navigate to="profile" replace />} />
+              <Route path="profile" element={<ProfileSettings />} />
+              <Route path="account" element={<AccountSettings />} />
+            </Route>
             <Route path="/upload" element={<AddPhotoPage />} />
           </Route>
 
