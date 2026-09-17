@@ -1,8 +1,7 @@
 import { PhotoIcon } from "@heroicons/react/24/solid";
-import { useQuery } from "@tanstack/react-query";
 import { Navigate } from "react-router";
-import usersService from "../../../services/users";
 import { useUser } from "../../../stores/auth";
+import { useProfile } from "../../profile";
 
 const Avatar = () => {
   return (
@@ -24,18 +23,7 @@ const Avatar = () => {
 
 const ProfileSettings = () => {
   const currentUser = useUser();
-  const {
-    isPending,
-    isError,
-    data: profile,
-  } = useQuery({
-    queryKey: ["profile", currentUser?.username],
-    queryFn: () => usersService.getUserProfile(currentUser?.username ?? ""),
-    enabled: !!currentUser && !!currentUser.username,
-    staleTime: 60_000,
-    gcTime: 10 * 60_000,
-    retry: 1,
-  });
+  const { isPending, isError, data: profile } = useProfile(currentUser?.username);
 
   if (!currentUser) {
     return <Navigate to="/" replace />;
@@ -60,12 +48,12 @@ const ProfileSettings = () => {
 
       <label>
         Display name
-        <input type="text" placeholder={profile.displayName ?? "Display name"} disabled />
+        <input type="text" value={profile.displayName} placeholder={"Display name"} />
       </label>
 
       <label>
         About
-        <textarea placeholder={profile.about ?? "A few words about you"} rows={4} disabled />
+        <textarea value={profile.about} placeholder={"A few words about you"} rows={4} />
       </label>
 
       {/*<fieldset className="settings-visibility-field">
