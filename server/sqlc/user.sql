@@ -47,6 +47,13 @@ RETURNING username_key, username_display;
 SELECT id, username_key, username_display, password_hash FROM users
 WHERE username_key = sqlc.arg(username_key);
 
+-- name: UsernameExists :one
+SELECT EXISTS (
+  SELECT 1
+  FROM users
+  WHERE username_key = sqlc.arg(username_key)
+);
+
 -- name: GetUserAccessProfile :one
 SELECT id, profile_visibility
 FROM users

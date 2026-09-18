@@ -120,6 +120,21 @@ func (s *AuthService) Signup(ctx context.Context, username, displayName, passwor
 	}, nil
 }
 
+func (s *AuthService) UsernameExists(ctx context.Context, username string) (bool, error) {
+	ukey := normKey(username)
+
+	if err := validateUsernameKey(ukey); err != nil {
+		return false, nil
+	}
+
+	exists, err := s.store.Queries.UsernameExists(ctx, ukey)
+	if err != nil {
+		return false, err
+	}
+
+	return !exists, nil
+}
+
 type LoginResult struct {
 	Username        string
 	DisplayName     string
@@ -252,7 +267,8 @@ func (s *AuthService) SessionOwner(ctx context.Context, userID uuid.UUID) (*Sess
 }
 
 type SessionResult struct {
-	UserID uuid.UUID
+	Username string
+	UserID   uuid.UUID
 }
 
 func (s *AuthService) ValidateSession(ctx context.Context, cookie string) (*SessionResult, error) {
@@ -290,10 +306,10 @@ func (s *AuthService) ValidateSession(ctx context.Context, cookie string) (*Sess
 		}
 	}
 
-	return &SessionResult{UserID: session.UserID}, nil
+	return &SessionResult{UserID: session.UserID, Username: session.UsernameKey.String}, nil
 }
 
-func sessionIsActive(session db.Session, now time.Time, idleTimeout time.Duration) bool {
+func sessionIsActive(session db.GetSessionRow, now time.Time, idleTimeout time.Duration) bool {
 	return !session.RevokedAt.Valid &&
 		now.Before(session.AbsoluteExpiresAt) &&
 		now.Before(session.LastSeenAt.Add(idleTimeout))

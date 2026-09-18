@@ -20,6 +20,7 @@ type authService interface {
 	Logout(context.Context, string) error
 	LogoutAll(context.Context, uuid.UUID) error
 	SessionOwner(ctx context.Context, userID uuid.UUID) (*auth.SessionOwnerResult, error)
+	UsernameExists(ctx context.Context, username string) (bool, error)
 }
 
 type AuthHandler struct {
@@ -227,6 +228,38 @@ func (h *AuthHandler) Session(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(SessionResponse{Username: user.UsernameKey, DisplayName: user.UsernameDisplay})
+
+	if err != nil {
+		slog.Error("Signup: failed encode response", "error", err)
+	}
+}
+
+type UsernameAvailabilityResponse struct {
+	Username  string `json:"username"`
+	Available bool   `json:"isAvailable"`
+}
+
+func (h *AuthHandler) UsernameAvailability(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+
+	var username string
+	if username = query.Get("username"); username == "" {
+		WriteError(w, http.StatusBadRequest, "invalid_params", "parameter username is requared")
+		return
+	}
+
+	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	isAvailable, err := h.authService.UsernameExists(ctx, username)
+	if err != nil {
+		slog.Error("Username availability request failed", "error", err)
+		WriteError(w, http.StatusInternalServerError, "internal_service_error", "")
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(UsernameAvailabilityResponse{Username: username, Available: isAvailable})
 
 	if err != nil {
 		slog.Error("Signup: failed encode response", "error", err)

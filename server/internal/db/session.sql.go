@@ -49,22 +49,35 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) ([
 
 const getSession = `-- name: GetSession :one
 SELECT
-  token_hash,
-  user_id,
-  created_at,
-  last_seen_at,
-  absolute_expires_at,
-  revoked_at
-FROM sessions
+  s.token_hash,
+  s.user_id,
+  u.username_key,
+  s.created_at,
+  s.last_seen_at,
+  s.absolute_expires_at,
+  s.revoked_at
+FROM sessions s
+LEFT JOIN users u ON s.user_id = u.id
 WHERE token_hash = $1
 `
 
-func (q *Queries) GetSession(ctx context.Context, tokenHash []byte) (Session, error) {
+type GetSessionRow struct {
+	TokenHash         []byte
+	UserID            uuid.UUID
+	UsernameKey       pgtype.Text
+	CreatedAt         time.Time
+	LastSeenAt        time.Time
+	AbsoluteExpiresAt time.Time
+	RevokedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) GetSession(ctx context.Context, tokenHash []byte) (GetSessionRow, error) {
 	row := q.db.QueryRow(ctx, getSession, tokenHash)
-	var i Session
+	var i GetSessionRow
 	err := row.Scan(
 		&i.TokenHash,
 		&i.UserID,
+		&i.UsernameKey,
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.AbsoluteExpiresAt,

@@ -32,6 +32,7 @@ func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware fun
 	mux.HandleFunc("POST /api/auth/logout", h.auth.Logout)
 	mux.HandleFunc("POST /api/auth/logout-all", authRequiredMiddleware(h.auth.LogoutAll))
 	mux.HandleFunc("GET /api/auth/session", authRequiredMiddleware(h.auth.Session))
+	mux.HandleFunc("GET /api/auth/username-availability", h.auth.UsernameAvailability)
 
 	// 2. @TODO Context-aware Profile route
 	mux.HandleFunc("GET /api/users/{username}", authRequiredMiddleware(h.user.GetUserProfile))
@@ -42,6 +43,7 @@ func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware fun
 	mux.HandleFunc("PUT /api/photos/{id}/complete", authRequiredMiddleware(h.photo.UploadComplete))
 
 	mux.Handle("PUT /api/users/me/profile", authRequiredMiddleware(h.user.UpdateMyProfile))
+	// mux.Handle("PUT /api/users/me/username", authRequiredMiddleware(h.user.UpdateMyUsername))
 }
 
 func main() {
