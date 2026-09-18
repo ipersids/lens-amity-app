@@ -19,6 +19,20 @@ FROM users u
 LEFT JOIN user_avatars a ON u.id = a.user_id
 WHERE u.username_key = sqlc.arg(username_key);
 
+-- name: UpdateUserProfile :one
+UPDATE users
+SET username_display = sqlc.arg(display_name),
+    about = sqlc.narg(about),
+    profile_visibility = sqlc.arg(visibility),
+    updated_at = now()
+WHERE id = sqlc.arg(id)
+RETURNING
+  id,
+  username_key,
+  username_display,
+  about,
+  profile_visibility;
+
 -- name: CreateUser :one
 INSERT INTO users (
   username_key, username_display, password_hash

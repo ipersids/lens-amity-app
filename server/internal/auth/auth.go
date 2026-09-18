@@ -72,7 +72,7 @@ type SignupResponse struct {
 func (s *AuthService) Signup(ctx context.Context, username, displayName, password string) (*SignupResponse, error) {
 	p := norm.NFC.String(password)
 	ukey := normKey(username)
-	udisplay := normDisplay(displayName)
+	udisplay := NormText(displayName)
 
 	if err := validateUsernameKey(ukey); err != nil {
 		return nil, err
@@ -83,10 +83,10 @@ func (s *AuthService) Signup(ctx context.Context, username, displayName, passwor
 	}
 
 	if udisplay == "" {
-		udisplay = normDisplay(username)
+		udisplay = NormText(username)
 	}
 
-	if err := validateNameLength(udisplay); err != nil {
+	if err := ValidateNameLength(udisplay); err != nil {
 		return nil, err
 	}
 

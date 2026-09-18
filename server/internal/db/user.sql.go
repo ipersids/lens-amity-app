@@ -251,3 +251,51 @@ func (q *Queries) ListUserPhotosFirstPage(ctx context.Context, arg ListUserPhoto
 	}
 	return items, nil
 }
+
+const updateUserProfile = `-- name: UpdateUserProfile :one
+UPDATE users
+SET username_display = $1,
+    about = $2,
+    profile_visibility = $3,
+    updated_at = now()
+WHERE id = $4
+RETURNING
+  id,
+  username_key,
+  username_display,
+  about,
+  profile_visibility
+`
+
+type UpdateUserProfileParams struct {
+	DisplayName string
+	About       pgtype.Text
+	Visibility  string
+	ID          uuid.UUID
+}
+
+type UpdateUserProfileRow struct {
+	ID                uuid.UUID
+	UsernameKey       string
+	UsernameDisplay   string
+	About             pgtype.Text
+	ProfileVisibility string
+}
+
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (UpdateUserProfileRow, error) {
+	row := q.db.QueryRow(ctx, updateUserProfile,
+		arg.DisplayName,
+		arg.About,
+		arg.Visibility,
+		arg.ID,
+	)
+	var i UpdateUserProfileRow
+	err := row.Scan(
+		&i.ID,
+		&i.UsernameKey,
+		&i.UsernameDisplay,
+		&i.About,
+		&i.ProfileVisibility,
+	)
+	return i, err
+}

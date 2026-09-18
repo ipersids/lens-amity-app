@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"lensamity/internal/auth"
 	"lensamity/internal/db"
 	"lensamity/internal/storage"
 	"log/slog"
 	"net/http"
 	"time"
+	"unicode/utf8"
 
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/google/uuid"
@@ -26,6 +28,7 @@ type usersStore interface {
 	profile(ctx context.Context, p profileParams) (*db.GetUserProfileRow, error)
 	accessProfile(ctx context.Context, p profileParams) (*db.GetUserAccessProfileRow, error)
 	photosPage(ctx context.Context, p photosPageParams) ([]db.Photo, error)
+	updateProfile(ctx context.Context, p updateProfileParams) error
 }
 
 func NewUserService(store *db.Store, s3Client *storage.Client) (*UserService, error) {
@@ -42,9 +45,10 @@ func NewUserService(store *db.Store, s3Client *storage.Client) (*UserService, er
 }
 
 var (
-	ErrorGetUserProfile   = errors.New("user profile not found")
-	ErrorGetUserPhotoPage = errors.New("photos not found")
-	ErrorInvalidCursor    = errors.New("invalid cursor")
+	ErrorGetUserProfile     = errors.New("user profile not found")
+	ErrorGetUserPhotoPage   = errors.New("photos not found")
+	ErrorInvalidCursor      = errors.New("invalid cursor")
+	ErrorInvalidAboutLength = errors.New("about is longer then 300 characters")
 )
 
 type GetUserProfileResult struct {
@@ -56,6 +60,34 @@ type GetUserProfileResult struct {
 	Visibility             string
 	JoinedAt               time.Time
 	AvatarPresignedRequest *v4.PresignedHTTPRequest
+}
+
+type UpdateProfileParams struct {
+	OwnerID     uuid.UUID
+	DisplayName string
+	About       string
+	Visibility  string
+}
+
+func (s *UserService) UpdateProfile(ctx context.Context, p UpdateProfileParams) error {
+	displayNameNormalized := auth.NormText(p.DisplayName)
+	err := auth.ValidateNameLength(displayNameNormalized)
+	if err != nil {
+		return err
+	}
+
+	aboutNormalized := auth.NormText(p.About)
+	err = ValidateAboutLength(aboutNormalized)
+	if err != nil {
+		return err
+	}
+
+	return s.repo.updateProfile(ctx, updateProfileParams{
+		OwnerID:     p.OwnerID,
+		DisplayName: displayNameNormalized,
+		About:       aboutNormalized,
+		Visibility:  p.Visibility,
+	})
 }
 
 func (s *UserService) GetUserProfile(ctx context.Context, username string) (*GetUserProfileResult, error) {
@@ -274,4 +306,14 @@ func decodePhotoCursor(cursor string) (time.Time, uuid.UUID, error) {
 	}
 
 	return photoDate, payload.ID, nil
+}
+
+func ValidateAboutLength(name string) error {
+	l := utf8.RuneCountInString(name)
+
+	if l > 300 {
+		return ErrorInvalidAboutLength
+	}
+
+	return nil
 }

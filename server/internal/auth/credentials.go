@@ -16,7 +16,11 @@ var (
 	usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,32}$`)
 )
 
-func normDisplay(s string) string {
+var (
+	ErrDisplayNameLength = errors.New("display must be 1-32 characters")
+)
+
+func NormText(s string) string {
 	return norm.NFC.String(strings.TrimSpace(s))
 }
 
@@ -66,15 +70,15 @@ func validatePasswordLength(p string) error {
 	return nil
 }
 
-func validateNameLength(name string) error {
+func ValidateNameLength(name string) error {
 	l := utf8.RuneCountInString(name)
 
 	if l < 3 {
-		return errors.New("display name is too short")
+		return ErrDisplayNameLength
 	}
 
 	if l > 32 {
-		return errors.New("display name is too long")
+		return ErrDisplayNameLength
 	}
 
 	return nil

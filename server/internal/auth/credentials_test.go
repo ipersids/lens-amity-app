@@ -29,7 +29,7 @@ func TestNormDisplay(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := normDisplay(tt.in)
+			got := NormText(tt.in)
 			if got != tt.want {
 				t.Fatalf("normDisplay(%q) = %q, want %q", tt.in, got, tt.want)
 			}
@@ -264,7 +264,7 @@ func TestValidateNameLength(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validateNameLength(tt.in)
+			err := ValidateNameLength(tt.in)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("validateNameLength(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
 			}

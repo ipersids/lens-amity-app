@@ -41,9 +41,7 @@ func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware fun
 	mux.HandleFunc("PUT /api/photos/upload", authRequiredMiddleware(h.photo.UploadIntent))
 	mux.HandleFunc("PUT /api/photos/{id}/complete", authRequiredMiddleware(h.photo.UploadComplete))
 
-	// mux.Handle("GET /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.GetMyProfile)))
-	// mux.Handle("PATCH /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.UpdateMyProfile)))
-	// mux.Handle("DELETE /api/users/me", middleware.RequireAuth(http.HandlerFunc(app.DeleteMyProfile)))
+	mux.Handle("PUT /api/users/me/profile", authRequiredMiddleware(h.user.UpdateMyProfile))
 }
 
 func main() {
