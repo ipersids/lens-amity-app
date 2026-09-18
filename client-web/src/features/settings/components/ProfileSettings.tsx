@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { Navigate } from "react-router";
+import type { Visibility } from "../../../services/users";
 import { useUser } from "../../../stores/auth";
-import { Avatar, useProfile } from "../../profile";
-
-// type Visibility = "public" | "private";
+import { Avatar, useProfile, useUpdateProfile } from "../../profile";
 
 const AvatarUpdate = ({ url, displayName }: { url?: string; displayName: string }) => {
   return (
@@ -23,16 +22,49 @@ type ProfileUpdateProps = {
   username: string;
   displayName: string;
   about?: string;
+  visibility: Visibility;
 };
 
-const ProfileUpdate = ({ username, displayName, about }: ProfileUpdateProps) => {
+const ProfileUpdate = ({ username, displayName, about, visibility }: ProfileUpdateProps) => {
+  const updateProfile = useUpdateProfile(username);
   const [updatedDisplayName, setUpdatedDisplayName] = useState<string | undefined>(displayName);
   const [updatedAbout, setUpdatedAbout] = useState<string | undefined>(about);
+  const [updatedVisibility, setUpdatedVisibility] = useState<Visibility>(visibility);
 
   const isUpdated =
     (updatedDisplayName !== displayName &&
       !(updatedDisplayName === undefined && displayName === username)) ||
     updatedAbout !== about;
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    updateProfile.mutate(
+      {
+        displayName:
+          updatedDisplayName === "" || !updatedDisplayName ? username : updatedDisplayName,
+        about: updatedAbout,
+        visibility: updatedVisibility,
+      },
+      {
+        onSuccess: () => {
+          // TODO: notify success
+        },
+        onError: (_error) => {
+          // notify error console.log(getApiErrorMessage(error));
+        },
+      },
+    );
+  };
+
+  const handleVisibilityChange = (
+    e: React.MouseEvent<HTMLButtonElement, MouseEvent>,
+    value: Visibility,
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setUpdatedVisibility(value);
+  };
 
   return (
     <>
@@ -68,27 +100,37 @@ const ProfileUpdate = ({ username, displayName, about }: ProfileUpdateProps) => 
         />
       </label>
 
-      {/*<fieldset className="settings-visibility-field">
+      <fieldset className="settings-visibility-field">
         <legend className="settings-field-title">Profile visibility</legend>
-        <div className="settings-visibility-switcher">
-          <button type="button" className="active" aria-pressed="true" disabled>
+        <div className="settings-visibility-switcher" aria-describedby="profile-visibility-note">
+          <button
+            type="button"
+            className={updatedVisibility === "public" ? "active" : undefined}
+            aria-pressed={updatedVisibility === "public"}
+            onClick={(e) => handleVisibilityChange(e, "public")}
+          >
             Public
           </button>
-          <button type="button" aria-pressed="false" disabled>
+          <button
+            type="button"
+            className={updatedVisibility === "private" ? "active" : undefined}
+            aria-pressed={updatedVisibility === "private"}
+            onClick={(e) => handleVisibilityChange(e, "private")}
+          >
             Private
           </button>
         </div>
-        <div className="settings-visibility-help">
-          <p>
-            <strong>Public:</strong> Visible to all logged-in users.
-          </p>
-          <p>
-            <strong>Private:</strong> Visible only to you.
-          </p>
-        </div>
-      </fieldset>*/}
+        <p className="settings-field-note" id="profile-visibility-note">
+          {`Photos in your profile will be visible ${updatedVisibility === "public" ? "to all logged-in users." : "only to you."}`}
+        </p>
+      </fieldset>
 
-      <button className="settings-save-button" type="button" disabled={!isUpdated}>
+      <button
+        className="settings-save-button"
+        type="button"
+        onClick={handleClick}
+        disabled={!isUpdated}
+      >
         Update profile
       </button>
     </>
@@ -122,6 +164,7 @@ const ProfileSettings = () => {
         username={profile.username}
         displayName={profile.displayName}
         about={profile.about}
+        visibility={profile.visibility}
       />
     </form>
   );

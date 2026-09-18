@@ -41,6 +41,7 @@ type GetUserProfileResponse struct {
 	PhotoCount    int64           `json:"photoCount"`
 	CanEdit       bool            `json:"canEdit"`
 	CanViewPhotos bool            `json:"canViewPhotos"`
+	Visibility    string          `json:"visibility"`
 	JoinedAt      time.Time       `json:"joinedAt"`
 	Avatar        *AvatarResponse `json:"avatar,omitempty"`
 	About         string          `json:"about,omitempty"`
@@ -78,6 +79,7 @@ func (h *UserHandler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
 		PhotoCount:    user.PhotoCount,
 		CanEdit:       user.ID == userID,
 		CanViewPhotos: user.Visibility == "public" || user.ID == userID,
+		Visibility:    user.Visibility,
 		JoinedAt:      user.JoinedAt,
 	}
 
