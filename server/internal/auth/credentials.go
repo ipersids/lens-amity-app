@@ -17,7 +17,9 @@ var (
 )
 
 var (
-	ErrDisplayNameLength = errors.New("display must be 1-32 characters")
+	ErrDisplayNameLength   = errors.New("display must be 1-32 characters")
+	ErrUsernameUnavailable = errors.New("username is not available")
+	ErrUsernameInvalid     = errors.New("username must be 3-32 characters and only contain alphanumeric characters, underscores, or hyphens")
 )
 
 func NormText(s string) string {
@@ -87,11 +89,11 @@ func ValidateNameLength(name string) error {
 // Apply strict rules for username key
 func ValidateUsernameKey(u string) error {
 	if !usernameRegex.MatchString(u) {
-		return errors.New("username must be 3-32 characters and only contain alphanumeric characters, underscores, or hyphens")
+		return ErrUsernameInvalid
 	}
 
 	if reservedUsernames[u] {
-		return errors.New("username is not available")
+		return ErrUsernameUnavailable
 	}
 
 	return nil

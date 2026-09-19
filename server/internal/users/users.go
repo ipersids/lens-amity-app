@@ -29,7 +29,7 @@ type usersStore interface {
 	accessProfile(ctx context.Context, p profileParams) (*db.GetUserAccessProfileRow, error)
 	photosPage(ctx context.Context, p photosPageParams) ([]db.Photo, error)
 	updateProfile(ctx context.Context, p updateProfileParams) error
-	updateUsername(ctx context.Context, userID uuid.UUID, newUsername string) error
+	updateUsername(ctx context.Context, userID uuid.UUID, newUsername string) (*db.UpdateUsernameRow, error)
 }
 
 func NewUserService(store *db.Store, s3Client *storage.Client) (*UserService, error) {
@@ -98,22 +98,22 @@ type UpdateUsernameParams struct {
 	NewUsername string
 }
 
-func (s *UserService) UpdateUsername(ctx context.Context, p UpdateUsernameParams) error {
+func (s *UserService) UpdateUsername(ctx context.Context, p UpdateUsernameParams) (usename string, err error) {
 	newUsernameNormalized := auth.NormKey(p.NewUsername)
 	if err := auth.ValidateUsernameKey(newUsernameNormalized); err != nil {
-		return fmt.Errorf("%w: %w", ErrorNewUsernameInvalid, err)
+		return "", fmt.Errorf("%w: %w", ErrorNewUsernameInvalid, err)
 	}
 
 	if newUsernameNormalized == p.Username {
-		return nil
+		return p.Username, nil
 	}
 
-	err := s.repo.updateUsername(ctx, p.UserID, newUsernameNormalized)
+	row, err := s.repo.updateUsername(ctx, p.UserID, newUsernameNormalized)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return row.UsernameKey, nil
 }
 
 func (s *UserService) GetUserProfile(ctx context.Context, username string) (*GetUserProfileResult, error) {

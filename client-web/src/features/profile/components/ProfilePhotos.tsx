@@ -1,4 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { ProfilePhotosQueryKey } from "../../../constants";
 import usersService from "../../../services/users";
 import { PhotosFeed } from "../../photos";
 
@@ -12,7 +13,7 @@ const pageSize = 24;
 const ProfilePhotos = ({ username, canViewPhotos }: ProfilePhotosProps) => {
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isPending, isError } =
     useInfiniteQuery({
-      queryKey: ["photos", username],
+      queryKey: ProfilePhotosQueryKey(username),
       queryFn: ({ pageParam }) => usersService.getUserPhotos(username, pageSize, pageParam),
       initialPageParam: undefined as string | undefined,
       getNextPageParam: (lastPage) => lastPage.nextCursor,

@@ -235,8 +235,8 @@ func (h *AuthHandler) Session(w http.ResponseWriter, r *http.Request) {
 }
 
 type UsernameAvailabilityResponse struct {
-	Username  string `json:"username"`
-	Available bool   `json:"isAvailable"`
+	Available       bool   `json:"isAvailable"`
+	ValidationError string `json:"validationError,omitempty"`
 }
 
 func (h *AuthHandler) UsernameAvailability(w http.ResponseWriter, r *http.Request) {
@@ -253,13 +253,19 @@ func (h *AuthHandler) UsernameAvailability(w http.ResponseWriter, r *http.Reques
 	defer cancel()
 
 	isAvailable, err := h.authService.UsernameExists(ctx, username)
-	if err != nil {
+	response := UsernameAvailabilityResponse{Available: isAvailable}
+	if err != nil && !errors.Is(err, auth.ErrUsernameValidationFailed) {
 		slog.Error("Username availability request failed", "error", err)
 		WriteError(w, http.StatusInternalServerError, "internal_service_error", "")
+		return
+	}
+
+	if errors.Is(err, auth.ErrUsernameValidationFailed) {
+		response.ValidationError = err.Error()
 	}
 
 	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(UsernameAvailabilityResponse{Username: username, Available: isAvailable})
+	err = json.NewEncoder(w).Encode(response)
 
 	if err != nil {
 		slog.Error("Signup: failed encode response", "error", err)

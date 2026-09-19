@@ -228,6 +228,10 @@ type UpdateMyUsernameRequest struct {
 	NewUsername string `json:"newUsername"`
 }
 
+type UpdateMyUsernameResponse struct {
+	UpdatedUsername string `json:"updatedUsername"`
+}
+
 func (h *UserHandler) UpdateMyUsername(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
 
@@ -260,7 +264,7 @@ func (h *UserHandler) UpdateMyUsername(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	err := h.userService.UpdateUsername(ctx, users.UpdateUsernameParams{
+	updatedUsername, err := h.userService.UpdateUsername(ctx, users.UpdateUsernameParams{
 		UserID:      userID,
 		Username:    username,
 		NewUsername: req.NewUsername,
@@ -275,5 +279,8 @@ func (h *UserHandler) UpdateMyUsername(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	err = json.NewEncoder(w).Encode(UpdateMyUsernameResponse{UpdatedUsername: updatedUsername})
+	if err != nil {
+		slog.Error("UserProfile handler: failed encode response", "error", err)
+	}
 }

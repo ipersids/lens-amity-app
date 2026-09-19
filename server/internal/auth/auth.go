@@ -53,10 +53,11 @@ func NewAuthService(store *db.Store, sessionSecret string) (*AuthService, error)
 }
 
 var (
-	ErrUsernameTaken      = errors.New("username is not available")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrInvalidSession     = errors.New("invalid session")
-	ErrInternal           = errors.New("internal error")
+	ErrUsernameTaken            = errors.New("username is not available")
+	ErrUsernameValidationFailed = errors.New("invalid username")
+	ErrInvalidCredentials       = errors.New("invalid credentials")
+	ErrInvalidSession           = errors.New("invalid session")
+	ErrInternal                 = errors.New("internal error")
 )
 
 const (
@@ -124,12 +125,15 @@ func (s *AuthService) UsernameExists(ctx context.Context, username string) (bool
 	ukey := NormKey(username)
 
 	if err := ValidateUsernameKey(ukey); err != nil {
-		return false, nil
+		if errors.Is(err, ErrUsernameTaken) {
+			return false, nil
+		}
+		return false, fmt.Errorf("%w: %w", ErrUsernameValidationFailed, err)
 	}
 
 	exists, err := s.store.Queries.UsernameExists(ctx, ukey)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("%w: %w", ErrInternal, err)
 	}
 
 	return !exists, nil

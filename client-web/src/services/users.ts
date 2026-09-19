@@ -73,6 +73,18 @@ const updateUserProfile = async ({
   await internalApi.put<void>(`${baseUsersURL}/me/profile`, { displayName, about, visibility });
 };
 
-const usersService = { getUserProfile, getUserPhotos, updateUserProfile };
+export type updateUsernameResponse = {
+  updatedUsername: string;
+};
+
+const updateUsername = async (newUsername: string): Promise<updateUsernameResponse> => {
+  const { data } = await internalApi.put<updateUsernameResponse>(`${baseUsersURL}/me/username`, {
+    newUsername,
+  });
+
+  return data;
+};
+
+const usersService = { getUserProfile, getUserPhotos, updateUserProfile, updateUsername };
 
 export default usersService;
