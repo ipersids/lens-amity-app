@@ -18,6 +18,7 @@ interface AuthActions {
   logoutAll: () => Promise<void>;
   verifySession: () => Promise<void>;
   updateUsername: (newUsername: string) => void;
+  updateDisplayName: (newDisplayName: string) => void;
 }
 
 interface AuthState {
@@ -133,6 +134,19 @@ const useAuthStore = create<AuthState>()(
             };
           });
         },
+
+        updateDisplayName: (newDisplayName: string) => {
+          set((state: AuthState) => {
+            if (!state.user) return {};
+
+            return {
+              user: {
+                ...state.user,
+                displayName: newDisplayName,
+              },
+            };
+          });
+        },
       },
     }),
     {
@@ -156,3 +170,5 @@ export const useLogin = () => useAuthStore((state) => state.actions.login);
 export const useLogout = () => useAuthStore((state) => state.actions.logout);
 export const useLogoutAll = () => useAuthStore((state) => state.actions.logoutAll);
 export const useUpdateUsernameInStore = () => useAuthStore((state) => state.actions.updateUsername);
+export const useUpdateDisplayNameInStore = () =>
+  useAuthStore((state) => state.actions.updateDisplayName);

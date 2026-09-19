@@ -47,3 +47,5 @@ export const validateUsername = (username: string): string => {
     ? "Use Latin letters, numbers, hyphens, and underscores"
     : "";
 };
+
+export const normalizeText = (value: string) => value.trim().normalize("NFC");

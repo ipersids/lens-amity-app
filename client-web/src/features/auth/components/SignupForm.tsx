@@ -1,7 +1,7 @@
 import { type SubmitEventHandler, useState } from "react";
 import { useNavigate } from "react-router";
 import { useLoading, useSignup } from "../../../stores/auth";
-import { validatePassword, validateUsername } from "../validation";
+import { normalizeText, validatePassword, validateUsername } from "../validation";
 import PasswordField from "./PasswordField";
 import TextField from "./TextField";
 
@@ -27,7 +27,7 @@ const SignupForm = () => {
     try {
       await signup({
         username: trimmedUsername,
-        displayName: trimmedUsername,
+        displayName: normalizeText(trimmedUsername),
         password,
       });
       navigate("/login", { replace: true });
