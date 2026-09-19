@@ -34,7 +34,8 @@ const ProfileUpdate = ({ username, displayName, about, visibility }: ProfileUpda
   const isUpdated =
     (updatedDisplayName !== displayName &&
       !(updatedDisplayName === undefined && displayName === username)) ||
-    updatedAbout !== about;
+    updatedAbout !== about ||
+    updatedVisibility !== visibility;
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.stopPropagation();
