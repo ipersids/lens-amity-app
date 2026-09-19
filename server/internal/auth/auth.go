@@ -71,10 +71,10 @@ type SignupResponse struct {
 
 func (s *AuthService) Signup(ctx context.Context, username, displayName, password string) (*SignupResponse, error) {
 	p := norm.NFC.String(password)
-	ukey := normKey(username)
+	ukey := NormKey(username)
 	udisplay := NormText(displayName)
 
-	if err := validateUsernameKey(ukey); err != nil {
+	if err := ValidateUsernameKey(ukey); err != nil {
 		return nil, err
 	}
 
@@ -121,9 +121,9 @@ func (s *AuthService) Signup(ctx context.Context, username, displayName, passwor
 }
 
 func (s *AuthService) UsernameExists(ctx context.Context, username string) (bool, error) {
-	ukey := normKey(username)
+	ukey := NormKey(username)
 
-	if err := validateUsernameKey(ukey); err != nil {
+	if err := ValidateUsernameKey(ukey); err != nil {
 		return false, nil
 	}
 
@@ -144,7 +144,7 @@ type LoginResult struct {
 
 func (s *AuthService) Login(ctx context.Context, username, password string) (*LoginResult, error) {
 	p := norm.NFC.String(password)
-	ukey := normKey(username)
+	ukey := NormKey(username)
 
 	if err := validatePasswordLength(p); err != nil {
 		return nil, ErrInvalidCredentials

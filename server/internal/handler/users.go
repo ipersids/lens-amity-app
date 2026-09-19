@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -223,6 +224,56 @@ func (h *UserHandler) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type UpdateMyUsernameRequest struct {
+	NewUsername string `json:"newUsername"`
+}
+
 func (h *UserHandler) UpdateMyUsername(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
+
+	var req UpdateMyUsernameRequest
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, "malformed_json", "username is required")
+		return
+	}
+
+	if strings.TrimSpace(req.NewUsername) == "" {
+		WriteError(w, http.StatusBadRequest, "malformed_json", "username is empty")
+		return
+	}
+
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	username, ok := r.Context().Value(middleware.UsernameKey).(string)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	err := h.userService.UpdateUsername(ctx, users.UpdateUsernameParams{
+		UserID:      userID,
+		Username:    username,
+		NewUsername: req.NewUsername,
+	})
+	if err != nil {
+		slog.Error("UpdateUsername: request failed", "error", err)
+		if errors.Is(err, users.ErrorNewUsernameInvalid) {
+			http.Error(w, "username contains forbidden characters or is unavailable", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

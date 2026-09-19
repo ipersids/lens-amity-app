@@ -300,6 +300,31 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 	return i, err
 }
 
+const updateUsername = `-- name: UpdateUsername :one
+UPDATE users
+SET username_key = $1,
+    updated_at = now()
+WHERE id = $2
+RETURNING id, username_key
+`
+
+type UpdateUsernameParams struct {
+	NewUsernameKey string
+	ID             uuid.UUID
+}
+
+type UpdateUsernameRow struct {
+	ID          uuid.UUID
+	UsernameKey string
+}
+
+func (q *Queries) UpdateUsername(ctx context.Context, arg UpdateUsernameParams) (UpdateUsernameRow, error) {
+	row := q.db.QueryRow(ctx, updateUsername, arg.NewUsernameKey, arg.ID)
+	var i UpdateUsernameRow
+	err := row.Scan(&i.ID, &i.UsernameKey)
+	return i, err
+}
+
 const usernameExists = `-- name: UsernameExists :one
 SELECT EXISTS (
   SELECT 1

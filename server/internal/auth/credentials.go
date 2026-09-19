@@ -24,7 +24,7 @@ func NormText(s string) string {
 	return norm.NFC.String(strings.TrimSpace(s))
 }
 
-func normKey(s string) string {
+func NormKey(s string) string {
 	folder := cases.Fold()
 	s = strings.TrimSpace(s)
 	s = norm.NFKC.String(s)
@@ -85,7 +85,7 @@ func ValidateNameLength(name string) error {
 }
 
 // Apply strict rules for username key
-func validateUsernameKey(u string) error {
+func ValidateUsernameKey(u string) error {
 	if !usernameRegex.MatchString(u) {
 		return errors.New("username must be 3-32 characters and only contain alphanumeric characters, underscores, or hyphens")
 	}

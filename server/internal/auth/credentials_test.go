@@ -61,7 +61,7 @@ func TestNormKey(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := normKey(tt.in)
+			got := NormKey(tt.in)
 			if got != tt.want {
 				t.Fatalf("normKey(%q) = %q, want %q", tt.in, got, tt.want)
 			}
@@ -123,7 +123,7 @@ func TestValidateUsernameKey(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validateUsernameKey(tt.in)
+			err := ValidateUsernameKey(tt.in)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("validateUsernameKey(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
 			}

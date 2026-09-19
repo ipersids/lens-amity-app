@@ -33,6 +33,13 @@ RETURNING
   about,
   profile_visibility;
 
+-- name: UpdateUsername :one
+UPDATE users
+SET username_key = sqlc.arg(new_username_key),
+    updated_at = now()
+WHERE id = sqlc.arg(id)
+RETURNING id, username_key;
+
 -- name: CreateUser :one
 INSERT INTO users (
   username_key, username_display, password_hash

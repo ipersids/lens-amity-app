@@ -29,6 +29,7 @@ type usersStore interface {
 	accessProfile(ctx context.Context, p profileParams) (*db.GetUserAccessProfileRow, error)
 	photosPage(ctx context.Context, p photosPageParams) ([]db.Photo, error)
 	updateProfile(ctx context.Context, p updateProfileParams) error
+	updateUsername(ctx context.Context, userID uuid.UUID, newUsername string) error
 }
 
 func NewUserService(store *db.Store, s3Client *storage.Client) (*UserService, error) {
@@ -49,6 +50,7 @@ var (
 	ErrorGetUserPhotoPage   = errors.New("photos not found")
 	ErrorInvalidCursor      = errors.New("invalid cursor")
 	ErrorInvalidAboutLength = errors.New("about is longer then 300 characters")
+	ErrorNewUsernameInvalid = errors.New("invalid new username")
 )
 
 type GetUserProfileResult struct {
@@ -88,6 +90,30 @@ func (s *UserService) UpdateProfile(ctx context.Context, p UpdateProfileParams) 
 		About:       aboutNormalized,
 		Visibility:  p.Visibility,
 	})
+}
+
+type UpdateUsernameParams struct {
+	UserID      uuid.UUID
+	Username    string
+	NewUsername string
+}
+
+func (s *UserService) UpdateUsername(ctx context.Context, p UpdateUsernameParams) error {
+	newUsernameNormalized := auth.NormKey(p.NewUsername)
+	if err := auth.ValidateUsernameKey(newUsernameNormalized); err != nil {
+		return fmt.Errorf("%w: %w", ErrorNewUsernameInvalid, err)
+	}
+
+	if newUsernameNormalized == p.Username {
+		return nil
+	}
+
+	err := s.repo.updateUsername(ctx, p.UserID, newUsernameNormalized)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *UserService) GetUserProfile(ctx context.Context, username string) (*GetUserProfileResult, error) {

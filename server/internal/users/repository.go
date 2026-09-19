@@ -132,3 +132,12 @@ func (r *usersRepository) updateProfile(ctx context.Context, p updateProfilePara
 
 	return nil
 }
+
+func (r *usersRepository) updateUsername(ctx context.Context, userID uuid.UUID, newUsername string) error {
+	_, err := r.store.Queries.UpdateUsername(ctx, db.UpdateUsernameParams{ID: userID, NewUsernameKey: newUsername})
+	if err != nil {
+		return fmt.Errorf("update username: %w", err)
+	}
+
+	return nil
+}
