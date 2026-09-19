@@ -76,7 +76,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	user, err := h.authService.Signup(ctx, req.Username, req.DisplayName, req.Password)
 
 	if err != nil {
-		if errors.Is(err, auth.ErrUsernameTaken) {
+		if errors.Is(err, auth.ErrUsernameUnavailable) {
 			WriteError(w, http.StatusConflict, "username_taken", "username is not available")
 			return
 		}
@@ -244,7 +244,7 @@ func (h *AuthHandler) UsernameAvailability(w http.ResponseWriter, r *http.Reques
 
 	var username string
 	if username = query.Get("username"); username == "" {
-		WriteError(w, http.StatusBadRequest, "invalid_params", "parameter username is requared")
+		WriteError(w, http.StatusBadRequest, "invalid_params", "parameter username is required")
 		return
 	}
 

@@ -17,9 +17,8 @@ var (
 )
 
 var (
-	ErrDisplayNameLength   = errors.New("display must be 1-32 characters")
-	ErrUsernameUnavailable = errors.New("username is not available")
-	ErrUsernameInvalid     = errors.New("username must be 3-32 characters and only contain alphanumeric characters, underscores, or hyphens")
+	ErrDisplayNameLength = errors.New("display must be 3-32 characters")
+	ErrUsernameInvalid   = errors.New("username must be 3-32 characters and only contain alphanumeric characters, underscores, or hyphens")
 )
 
 func NormText(s string) string {

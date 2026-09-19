@@ -240,7 +240,7 @@ func (h *UserHandler) UpdateMyUsername(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
-		WriteError(w, http.StatusBadRequest, "malformed_json", "username is required")
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed JSON")
 		return
 	}
 
@@ -272,7 +272,11 @@ func (h *UserHandler) UpdateMyUsername(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("UpdateUsername: request failed", "error", err)
 		if errors.Is(err, users.ErrorNewUsernameInvalid) {
-			http.Error(w, "username contains forbidden characters or is unavailable", http.StatusBadRequest)
+			http.Error(w, "username contains forbidden characters", http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, users.ErrorNewUsernameTaken) {
+			http.Error(w, "username is not available", http.StatusBadRequest)
 			return
 		}
 		http.Error(w, "something went wrong", http.StatusInternalServerError)

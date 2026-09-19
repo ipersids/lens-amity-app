@@ -74,7 +74,7 @@ const ProfileUpdate = ({ username, displayName, about, visibility }: ProfileUpda
           Display name
           <input
             type="text"
-            value={updatedDisplayName}
+            value={updatedDisplayName ?? ""}
             placeholder={username}
             aria-describedby="profile-display-name-note"
             onChange={(e) => {

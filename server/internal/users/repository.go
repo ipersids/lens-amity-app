@@ -113,7 +113,6 @@ func (r *usersRepository) photosPage(ctx context.Context, p photosPageParams) ([
 
 type updateProfileParams struct {
 	OwnerID     uuid.UUID
-	Username    string
 	DisplayName string
 	About       string
 	Visibility  string

@@ -569,7 +569,7 @@ footer {
   line-height: 1.4;
 }
 
-.settings-account-action button {
+.settings-account-action button:not(.dialog-trigger) {
   flex-shrink: 0;
   min-height: 40px;
   border: 1px solid var(--border);
@@ -712,15 +712,11 @@ footer {
   background: var(--border);
 }
 
-.settings-account-action .dialog-trigger,
-.settings-account-action .dialog-save-button {
-  background: var(--primary);
-  color: #ffffff;
-}
-
-.settings-account-action .dialog-trigger:hover,
-.settings-account-action .dialog-save-button:hover {
-  background: var(--primary-hover);
+.dialog-save-button:disabled,
+.dialog-save-button:disabled:hover {
+  background: var(--surface-muted);
+  color: var(--muted);
+  cursor: not-allowed;
 }
 
 .dialog-close-button {

@@ -53,7 +53,7 @@ func NewAuthService(store *db.Store, sessionSecret string) (*AuthService, error)
 }
 
 var (
-	ErrUsernameTaken            = errors.New("username is not available")
+	ErrUsernameUnavailable      = errors.New("username is not available")
 	ErrUsernameValidationFailed = errors.New("invalid username")
 	ErrInvalidCredentials       = errors.New("invalid credentials")
 	ErrInvalidSession           = errors.New("invalid session")
@@ -110,7 +110,7 @@ func (s *AuthService) Signup(ctx context.Context, username, displayName, passwor
 		if errors.As(err, &pgErr) &&
 			pgErr.Code == "23505" &&
 			pgErr.ConstraintName == usernameKeyUniqueConstraint {
-			return nil, ErrUsernameTaken
+			return nil, ErrUsernameUnavailable
 		}
 		return nil, fmt.Errorf("%w: create user: %w", ErrInternal, err)
 	}
@@ -125,7 +125,7 @@ func (s *AuthService) UsernameExists(ctx context.Context, username string) (bool
 	ukey := NormKey(username)
 
 	if err := ValidateUsernameKey(ukey); err != nil {
-		if errors.Is(err, ErrUsernameTaken) {
+		if errors.Is(err, ErrUsernameUnavailable) {
 			return false, nil
 		}
 		return false, fmt.Errorf("%w: %w", ErrUsernameValidationFailed, err)

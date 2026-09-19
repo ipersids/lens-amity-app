@@ -17,6 +17,7 @@ import (
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type UserService struct {
@@ -49,9 +50,12 @@ var (
 	ErrorGetUserProfile     = errors.New("user profile not found")
 	ErrorGetUserPhotoPage   = errors.New("photos not found")
 	ErrorInvalidCursor      = errors.New("invalid cursor")
-	ErrorInvalidAboutLength = errors.New("about is longer then 300 characters")
+	ErrorInvalidAboutLength = errors.New("about is longer than 300 characters")
 	ErrorNewUsernameInvalid = errors.New("invalid new username")
+	ErrorNewUsernameTaken   = errors.New("new username is already taken")
 )
+
+const usernameKeyUniqueConstraint = "users_username_key_key"
 
 type GetUserProfileResult struct {
 	ID                     uuid.UUID
@@ -110,6 +114,10 @@ func (s *UserService) UpdateUsername(ctx context.Context, p UpdateUsernameParams
 
 	row, err := s.repo.updateUsername(ctx, p.UserID, newUsernameNormalized)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == usernameKeyUniqueConstraint {
+			return "", ErrorNewUsernameTaken
+		}
 		return "", err
 	}
 

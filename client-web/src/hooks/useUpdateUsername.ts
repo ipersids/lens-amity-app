@@ -1,6 +1,6 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { type InfiniteData, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ProfilePhotosQueryKey, ProfileQueryKey } from "../constants";
-import usersService, { type UserProfileResponse } from "../services/users";
+import usersService, { type UserPhotosResponse, type UserProfileResponse } from "../services/users";
 import { useUpdateUsernameInStore, useUser } from "../stores/auth";
 
 const useUpdateUsername = () => {
@@ -14,10 +14,11 @@ const useUpdateUsername = () => {
     mutationFn: usersService.updateUsername,
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: previousProfileKey, exact: true });
+      await queryClient.cancelQueries({ queryKey: previousProfilePhotosKey, exact: true });
 
       const previousProfile = queryClient.getQueryData<UserProfileResponse>(previousProfileKey);
       const previousProfilePhotos =
-        queryClient.getQueryData<UserProfileResponse>(previousProfilePhotosKey);
+        queryClient.getQueryData<InfiniteData<UserPhotosResponse>>(previousProfilePhotosKey);
 
       queryClient.removeQueries({
         queryKey: previousProfileKey,

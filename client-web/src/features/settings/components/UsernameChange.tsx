@@ -80,6 +80,7 @@ const UsernameChange = ({ username }: { username: string }) => {
                   className="dialog-save-button"
                   type="button"
                   onClick={(e) => handleSaveChanges(e)}
+                  disabled={status !== "available" || updateUsername.isPending}
                 >
                   Save changes
                 </button>
