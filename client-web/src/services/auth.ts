@@ -28,6 +28,11 @@ type SessionResponse = {
   displayName: string;
 };
 
+type UsernameAvailabilityResponse = {
+  isAvailable: boolean;
+  validationError?: string;
+};
+
 const signup = async (credentials: SignupItem): Promise<SignupResponse> => {
   const { data } = await authApi.post<SignupResponse>(`${baseAuthURI}/signup`, {
     ...credentials,
@@ -54,6 +59,17 @@ const session = async () => {
   return data;
 };
 
-const authService = { signup, login, logout, logoutAll, session };
+const getUsernameAvailability = async (
+  username: string,
+  signal?: AbortSignal,
+): Promise<UsernameAvailabilityResponse> => {
+  const { data } = await authApi.get<UsernameAvailabilityResponse>(
+    `${baseAuthURI}/username-availability`,
+    { params: { username }, signal },
+  );
+  return data;
+};
+
+const authService = { signup, login, logout, logoutAll, session, getUsernameAvailability };
 
 export default authService;

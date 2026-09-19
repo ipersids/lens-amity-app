@@ -13,6 +13,7 @@ type contextKey string
 
 const (
 	UserIDKey         contextKey = "userID"
+	UsernameKey       contextKey = "username"
 	SessionCookieName            = "session"
 )
 
@@ -65,6 +66,7 @@ func StrictAuth(authService *auth.AuthService) func(http.HandlerFunc) http.Handl
 			}
 
 			requestCtx := context.WithValue(r.Context(), UserIDKey, session.UserID)
+			requestCtx = context.WithValue(requestCtx, UsernameKey, session.Username)
 			next.ServeHTTP(w, r.WithContext(requestCtx))
 		}
 	}

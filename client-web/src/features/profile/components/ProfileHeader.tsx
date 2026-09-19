@@ -1,3 +1,5 @@
+import Avatar from "./Avatar";
+
 type Profile = {
   username: string;
   displayName: string;
@@ -15,15 +17,7 @@ type ProfileHeaderProps = {
 const ProfileHeader = ({ profile }: ProfileHeaderProps) => {
   return (
     <header className="profile-header">
-      <div className="profile-avatar">
-        {profile.avatarURL ? (
-          <img src={profile.avatarURL} alt={`${profile.displayName} avatar`} />
-        ) : (
-          <span role="img" aria-label={`${profile.displayName} avatar`}>
-            {profile.displayName.charAt(0).toUpperCase()}
-          </span>
-        )}
-      </div>
+      <Avatar avatarURL={profile.avatarURL} displayName={profile.displayName} />
 
       <div className="profile-info">
         <div>

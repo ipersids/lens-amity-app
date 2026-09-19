@@ -53,10 +53,11 @@ func NewAuthService(store *db.Store, sessionSecret string) (*AuthService, error)
 }
 
 var (
-	ErrUsernameTaken      = errors.New("username is not available")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrInvalidSession     = errors.New("invalid session")
-	ErrInternal           = errors.New("internal error")
+	ErrUsernameUnavailable      = errors.New("username is not available")
+	ErrUsernameValidationFailed = errors.New("invalid username")
+	ErrInvalidCredentials       = errors.New("invalid credentials")
+	ErrInvalidSession           = errors.New("invalid session")
+	ErrInternal                 = errors.New("internal error")
 )
 
 const (
@@ -71,10 +72,10 @@ type SignupResponse struct {
 
 func (s *AuthService) Signup(ctx context.Context, username, displayName, password string) (*SignupResponse, error) {
 	p := norm.NFC.String(password)
-	ukey := normKey(username)
-	udisplay := normDisplay(displayName)
+	ukey := NormKey(username)
+	udisplay := NormText(displayName)
 
-	if err := validateUsernameKey(ukey); err != nil {
+	if err := ValidateUsernameKey(ukey); err != nil {
 		return nil, err
 	}
 
@@ -83,10 +84,10 @@ func (s *AuthService) Signup(ctx context.Context, username, displayName, passwor
 	}
 
 	if udisplay == "" {
-		udisplay = normDisplay(username)
+		udisplay = NormText(username)
 	}
 
-	if err := validateNameLength(udisplay); err != nil {
+	if err := ValidateNameLength(udisplay); err != nil {
 		return nil, err
 	}
 
@@ -109,7 +110,7 @@ func (s *AuthService) Signup(ctx context.Context, username, displayName, passwor
 		if errors.As(err, &pgErr) &&
 			pgErr.Code == "23505" &&
 			pgErr.ConstraintName == usernameKeyUniqueConstraint {
-			return nil, ErrUsernameTaken
+			return nil, ErrUsernameUnavailable
 		}
 		return nil, fmt.Errorf("%w: create user: %w", ErrInternal, err)
 	}
@@ -118,6 +119,24 @@ func (s *AuthService) Signup(ctx context.Context, username, displayName, passwor
 		UsernameKey:     user.UsernameKey,
 		UsernameDisplay: user.UsernameDisplay,
 	}, nil
+}
+
+func (s *AuthService) UsernameExists(ctx context.Context, username string) (bool, error) {
+	ukey := NormKey(username)
+
+	if err := ValidateUsernameKey(ukey); err != nil {
+		if errors.Is(err, ErrUsernameUnavailable) {
+			return false, nil
+		}
+		return false, fmt.Errorf("%w: %w", ErrUsernameValidationFailed, err)
+	}
+
+	exists, err := s.store.Queries.UsernameExists(ctx, ukey)
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", ErrInternal, err)
+	}
+
+	return !exists, nil
 }
 
 type LoginResult struct {
@@ -129,7 +148,7 @@ type LoginResult struct {
 
 func (s *AuthService) Login(ctx context.Context, username, password string) (*LoginResult, error) {
 	p := norm.NFC.String(password)
-	ukey := normKey(username)
+	ukey := NormKey(username)
 
 	if err := validatePasswordLength(p); err != nil {
 		return nil, ErrInvalidCredentials
@@ -252,7 +271,8 @@ func (s *AuthService) SessionOwner(ctx context.Context, userID uuid.UUID) (*Sess
 }
 
 type SessionResult struct {
-	UserID uuid.UUID
+	Username string
+	UserID   uuid.UUID
 }
 
 func (s *AuthService) ValidateSession(ctx context.Context, cookie string) (*SessionResult, error) {
@@ -290,10 +310,10 @@ func (s *AuthService) ValidateSession(ctx context.Context, cookie string) (*Sess
 		}
 	}
 
-	return &SessionResult{UserID: session.UserID}, nil
+	return &SessionResult{UserID: session.UserID, Username: session.UsernameKey.String}, nil
 }
 
-func sessionIsActive(session db.Session, now time.Time, idleTimeout time.Duration) bool {
+func sessionIsActive(session db.GetSessionRow, now time.Time, idleTimeout time.Duration) bool {
 	return !session.RevokedAt.Valid &&
 		now.Before(session.AbsoluteExpiresAt) &&
 		now.Before(session.LastSeenAt.Add(idleTimeout))

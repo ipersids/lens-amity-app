@@ -2,12 +2,15 @@ import { internalApi } from "./api";
 
 const baseUsersURL = "/api/users";
 
-type UserProfileResponse = {
+export type Visibility = "public" | "private";
+
+export type UserProfileResponse = {
   username: string;
   displayName: string;
   photoCount: number;
   canEdit: boolean;
   canViewPhotos: boolean;
+  visibility: Visibility;
   joinedAt: string;
   avatar?: {
     url: string;
@@ -56,6 +59,32 @@ const getUserPhotos = async (
   return data;
 };
 
-const usersService = { getUserProfile, getUserPhotos };
+export type UpdateProfileProps = {
+  displayName: string;
+  about?: string;
+  visibility: Visibility;
+};
+
+const updateUserProfile = async ({
+  displayName,
+  about,
+  visibility,
+}: UpdateProfileProps): Promise<void> => {
+  await internalApi.put<void>(`${baseUsersURL}/me/profile`, { displayName, about, visibility });
+};
+
+export type updateUsernameResponse = {
+  updatedUsername: string;
+};
+
+const updateUsername = async (newUsername: string): Promise<updateUsernameResponse> => {
+  const { data } = await internalApi.put<updateUsernameResponse>(`${baseUsersURL}/me/username`, {
+    newUsername,
+  });
+
+  return data;
+};
+
+const usersService = { getUserProfile, getUserPhotos, updateUserProfile, updateUsername };
 
 export default usersService;

@@ -1,27 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import {
   ProfileHeader,
   ProfileNotAvailable,
   ProfilePhotos,
   ProfileShell,
+  useProfile,
 } from "../features/profile";
-import usersService from "../services/users";
 
 const ProfilePage = () => {
   const { username } = useParams<{ username: string }>();
-  const {
-    isPending,
-    isError,
-    data: user,
-  } = useQuery({
-    queryKey: ["profile", username],
-    queryFn: () => usersService.getUserProfile(username ?? ""),
-    enabled: !!username,
-    staleTime: 60_000,
-    gcTime: 10 * 60_000,
-    retry: 1,
-  });
+  const { isPending, isError, data: user } = useProfile(username);
 
   if (!username || isError) {
     return <ProfileNotAvailable />;

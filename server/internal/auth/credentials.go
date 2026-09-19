@@ -16,11 +16,16 @@ var (
 	usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,32}$`)
 )
 
-func normDisplay(s string) string {
+var (
+	ErrDisplayNameLength = errors.New("display must be 3-32 characters")
+	ErrUsernameInvalid   = errors.New("username must be 3-32 characters and only contain alphanumeric characters, underscores, or hyphens")
+)
+
+func NormText(s string) string {
 	return norm.NFC.String(strings.TrimSpace(s))
 }
 
-func normKey(s string) string {
+func NormKey(s string) string {
 	folder := cases.Fold()
 	s = strings.TrimSpace(s)
 	s = norm.NFKC.String(s)
@@ -66,28 +71,28 @@ func validatePasswordLength(p string) error {
 	return nil
 }
 
-func validateNameLength(name string) error {
+func ValidateNameLength(name string) error {
 	l := utf8.RuneCountInString(name)
 
 	if l < 3 {
-		return errors.New("display name is too short")
+		return ErrDisplayNameLength
 	}
 
 	if l > 32 {
-		return errors.New("display name is too long")
+		return ErrDisplayNameLength
 	}
 
 	return nil
 }
 
 // Apply strict rules for username key
-func validateUsernameKey(u string) error {
+func ValidateUsernameKey(u string) error {
 	if !usernameRegex.MatchString(u) {
-		return errors.New("username must be 3-32 characters and only contain alphanumeric characters, underscores, or hyphens")
+		return ErrUsernameInvalid
 	}
 
 	if reservedUsernames[u] {
-		return errors.New("username is not available")
+		return ErrUsernameUnavailable
 	}
 
 	return nil

@@ -7,6 +7,8 @@ type PaswordValidationResult = {
 };
 
 const USERNAME_REGEX = /^[A-Za-z0-9_-]+$/;
+const MIN_USERNAME_LENGTH = 3;
+const MAX_USERNAME_LENGTH = 32;
 const MIN_PASSWORD_LENGTH = 15;
 
 const scoreToWord = (score: number): string => {
@@ -35,7 +37,13 @@ export const validatePassword = (
 };
 
 export const validateUsername = (username: string): string => {
-  return username && !USERNAME_REGEX.test(username)
+  if (!username) return "";
+
+  if (username.length < MIN_USERNAME_LENGTH || username.length > MAX_USERNAME_LENGTH) {
+    return `Use ${MIN_USERNAME_LENGTH} to ${MAX_USERNAME_LENGTH} characters`;
+  }
+
+  return !USERNAME_REGEX.test(username)
     ? "Use Latin letters, numbers, hyphens, and underscores"
     : "";
 };

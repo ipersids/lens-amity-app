@@ -71,6 +71,14 @@ const Header = () => {
                 >
                   Add photo
                 </NavLink>
+                <NavLink
+                  to="/settings"
+                  end
+                  role="menuitem"
+                  onClick={() => setIsAccountMenuOpen(false)}
+                >
+                  Settings
+                </NavLink>
                 <button disabled={isLoading} onClick={handleLogout} type="button" role="menuitem">
                   Log out
                 </button>

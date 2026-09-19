@@ -20,6 +20,7 @@ type authService interface {
 	Logout(context.Context, string) error
 	LogoutAll(context.Context, uuid.UUID) error
 	SessionOwner(ctx context.Context, userID uuid.UUID) (*auth.SessionOwnerResult, error)
+	UsernameExists(ctx context.Context, username string) (bool, error)
 }
 
 type AuthHandler struct {
@@ -75,7 +76,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	user, err := h.authService.Signup(ctx, req.Username, req.DisplayName, req.Password)
 
 	if err != nil {
-		if errors.Is(err, auth.ErrUsernameTaken) {
+		if errors.Is(err, auth.ErrUsernameUnavailable) {
 			WriteError(w, http.StatusConflict, "username_taken", "username is not available")
 			return
 		}
@@ -227,6 +228,44 @@ func (h *AuthHandler) Session(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(SessionResponse{Username: user.UsernameKey, DisplayName: user.UsernameDisplay})
+
+	if err != nil {
+		slog.Error("Signup: failed encode response", "error", err)
+	}
+}
+
+type UsernameAvailabilityResponse struct {
+	Available       bool   `json:"isAvailable"`
+	ValidationError string `json:"validationError,omitempty"`
+}
+
+func (h *AuthHandler) UsernameAvailability(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+
+	var username string
+	if username = query.Get("username"); username == "" {
+		WriteError(w, http.StatusBadRequest, "invalid_params", "parameter username is required")
+		return
+	}
+
+	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	isAvailable, err := h.authService.UsernameExists(ctx, username)
+	response := UsernameAvailabilityResponse{Available: isAvailable}
+	if err != nil && !errors.Is(err, auth.ErrUsernameValidationFailed) {
+		slog.Error("Username availability request failed", "error", err)
+		WriteError(w, http.StatusInternalServerError, "internal_service_error", "")
+		return
+	}
+
+	if errors.Is(err, auth.ErrUsernameValidationFailed) {
+		response.ValidationError = err.Error()
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(response)
 
 	if err != nil {
 		slog.Error("Signup: failed encode response", "error", err)

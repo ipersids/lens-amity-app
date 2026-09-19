@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"lensamity/internal/auth"
 	"lensamity/internal/middleware"
 	"lensamity/internal/users"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,6 +42,7 @@ type GetUserProfileResponse struct {
 	PhotoCount    int64           `json:"photoCount"`
 	CanEdit       bool            `json:"canEdit"`
 	CanViewPhotos bool            `json:"canViewPhotos"`
+	Visibility    string          `json:"visibility"`
 	JoinedAt      time.Time       `json:"joinedAt"`
 	Avatar        *AvatarResponse `json:"avatar,omitempty"`
 	About         string          `json:"about,omitempty"`
@@ -77,6 +80,7 @@ func (h *UserHandler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
 		PhotoCount:    user.PhotoCount,
 		CanEdit:       user.ID == userID,
 		CanViewPhotos: user.Visibility == "public" || user.ID == userID,
+		Visibility:    user.Visibility,
 		JoinedAt:      user.JoinedAt,
 	}
 
@@ -159,6 +163,127 @@ func (h *UserHandler) GetUserPhotos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		slog.Error("UserProfile handler: failed encode response", "error", err)
+	}
+}
+
+type UpdateMyProfileRequest struct {
+	DisplayName string `json:"displayName"`
+	About       string `json:"about"`
+	Visibility  string `json:"visibility"`
+}
+
+func (h *UserHandler) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
+
+	var req UpdateMyProfileRequest
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed JSON")
+		return
+	}
+
+	if req.DisplayName == "" {
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed JSON: display name should not be empty")
+		return
+	}
+
+	if req.Visibility == "" || !(req.Visibility == "public" || req.Visibility == "private") {
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed JSON: unexpected visibility value")
+		return
+	}
+
+	ownerID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	err := h.userService.UpdateProfile(ctx, users.UpdateProfileParams{
+		OwnerID:     ownerID,
+		DisplayName: req.DisplayName,
+		About:       req.About,
+		Visibility:  req.Visibility,
+	})
+	if err != nil {
+		slog.Error("UpdateMyProfile: request failed", "error", err)
+		if errors.Is(err, auth.ErrDisplayNameLength) || errors.Is(err, users.ErrorInvalidAboutLength) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type UpdateMyUsernameRequest struct {
+	NewUsername string `json:"newUsername"`
+}
+
+type UpdateMyUsernameResponse struct {
+	UpdatedUsername string `json:"updatedUsername"`
+}
+
+func (h *UserHandler) UpdateMyUsername(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
+
+	var req UpdateMyUsernameRequest
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed JSON")
+		return
+	}
+
+	if strings.TrimSpace(req.NewUsername) == "" {
+		WriteError(w, http.StatusBadRequest, "malformed_json", "username is empty")
+		return
+	}
+
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	username, ok := r.Context().Value(middleware.UsernameKey).(string)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	updatedUsername, err := h.userService.UpdateUsername(ctx, users.UpdateUsernameParams{
+		UserID:      userID,
+		Username:    username,
+		NewUsername: req.NewUsername,
+	})
+	if err != nil {
+		slog.Error("UpdateUsername: request failed", "error", err)
+		if errors.Is(err, users.ErrorNewUsernameInvalid) {
+			http.Error(w, "username contains forbidden characters", http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, users.ErrorNewUsernameTaken) {
+			http.Error(w, "username is not available", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(UpdateMyUsernameResponse{UpdatedUsername: updatedUsername})
 	if err != nil {
 		slog.Error("UserProfile handler: failed encode response", "error", err)
 	}

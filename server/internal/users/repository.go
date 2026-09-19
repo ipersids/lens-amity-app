@@ -3,6 +3,7 @@ package users
 import (
 	"context"
 	"errors"
+	"fmt"
 	"lensamity/internal/db"
 	"lensamity/internal/storage"
 	"time"
@@ -108,4 +109,34 @@ func (r *usersRepository) photosPage(ctx context.Context, p photosPageParams) ([
 	}
 
 	return rows, nil
+}
+
+type updateProfileParams struct {
+	OwnerID     uuid.UUID
+	DisplayName string
+	About       string
+	Visibility  string
+}
+
+func (r *usersRepository) updateProfile(ctx context.Context, p updateProfileParams) error {
+	_, err := r.store.Queries.UpdateUserProfile(ctx, db.UpdateUserProfileParams{
+		DisplayName: p.DisplayName,
+		About:       pgtype.Text{String: p.About, Valid: p.About != ""},
+		Visibility:  p.Visibility,
+		ID:          p.OwnerID,
+	})
+	if err != nil {
+		return fmt.Errorf("update user profile: %w", err)
+	}
+
+	return nil
+}
+
+func (r *usersRepository) updateUsername(ctx context.Context, userID uuid.UUID, newUsername string) (*db.UpdateUsernameRow, error) {
+	row, err := r.store.Queries.UpdateUsername(ctx, db.UpdateUsernameParams{ID: userID, NewUsernameKey: newUsername})
+	if err != nil {
+		return nil, fmt.Errorf("update username: %w", err)
+	}
+
+	return &row, nil
 }

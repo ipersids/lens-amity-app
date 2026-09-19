@@ -19,6 +19,27 @@ FROM users u
 LEFT JOIN user_avatars a ON u.id = a.user_id
 WHERE u.username_key = sqlc.arg(username_key);
 
+-- name: UpdateUserProfile :one
+UPDATE users
+SET username_display = sqlc.arg(display_name),
+    about = sqlc.narg(about),
+    profile_visibility = sqlc.arg(visibility),
+    updated_at = now()
+WHERE id = sqlc.arg(id)
+RETURNING
+  id,
+  username_key,
+  username_display,
+  about,
+  profile_visibility;
+
+-- name: UpdateUsername :one
+UPDATE users
+SET username_key = sqlc.arg(new_username_key),
+    updated_at = now()
+WHERE id = sqlc.arg(id)
+RETURNING id, username_key;
+
 -- name: CreateUser :one
 INSERT INTO users (
   username_key, username_display, password_hash
@@ -32,6 +53,13 @@ RETURNING username_key, username_display;
 -- name: GetUserDataForLogin :one
 SELECT id, username_key, username_display, password_hash FROM users
 WHERE username_key = sqlc.arg(username_key);
+
+-- name: UsernameExists :one
+SELECT EXISTS (
+  SELECT 1
+  FROM users
+  WHERE username_key = sqlc.arg(username_key)
+);
 
 -- name: GetUserAccessProfile :one
 SELECT id, profile_visibility
