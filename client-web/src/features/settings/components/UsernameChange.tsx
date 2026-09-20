@@ -49,17 +49,24 @@ const UsernameChange = ({ username }: { username: string }) => {
             <Dialog.Title className="dialog-title">Change username</Dialog.Title>
             <fieldset className="dialog-fieldset">
               <label className="dialog-label" htmlFor="new_username">
-                Enter a new username *
+                Enter a new username
               </label>
               <input
                 className="dialog-input"
+                type="text"
                 id="new_username"
                 name="new_username"
                 autoComplete="username"
                 value={newUsername}
-                onChange={(event) => setNewUsername(event.target.value)}
+                onChange={(event) => {
+                  event.preventDefault();
+                  setNewUsername(event.target.value);
+                }}
                 aria-describedby="new_username_note"
-                aria-invalid={status === "invalid" || status === "unavailable"}
+                aria-invalid={
+                  status === "invalid" || status === "unavailable" || status === "error"
+                }
+                required
               />
               <p
                 className={`dialog-field-note dialog-field-note-${status}`}
