@@ -40,6 +40,18 @@ SET username_key = sqlc.arg(new_username_key),
 WHERE id = sqlc.arg(id)
 RETURNING id, username_key;
 
+-- name: UpdatePasswordHash :one
+UPDATE users
+SET password_hash = sqlc.arg(new_password_hash),
+    updated_at = now()
+WHERE id = sqlc.arg(user_id)
+  AND password_hash = sqlc.arg(current_password_hash)
+RETURNING id;
+
+-- name: GetPasswordHash :one
+SELECT id, username_key, password_hash FROM users
+WHERE id = sqlc.arg(user_id);
+
 -- name: CreateUser :one
 INSERT INTO users (
   username_key, username_display, password_hash

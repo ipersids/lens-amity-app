@@ -33,7 +33,7 @@ func NormKey(s string) string {
 	return s
 }
 
-func validatePassword(p string, userInputs []string) error {
+func ValidatePassword(p string, userInputs []string) error {
 	if err := validatePasswordLength(p); err != nil {
 		return err
 	}

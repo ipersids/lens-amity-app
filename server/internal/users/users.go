@@ -68,62 +68,6 @@ type GetUserProfileResult struct {
 	AvatarPresignedRequest *v4.PresignedHTTPRequest
 }
 
-type UpdateProfileParams struct {
-	OwnerID     uuid.UUID
-	DisplayName string
-	About       string
-	Visibility  string
-}
-
-func (s *UserService) UpdateProfile(ctx context.Context, p UpdateProfileParams) error {
-	displayNameNormalized := auth.NormText(p.DisplayName)
-	err := auth.ValidateNameLength(displayNameNormalized)
-	if err != nil {
-		return err
-	}
-
-	aboutNormalized := auth.NormText(p.About)
-	err = ValidateAboutLength(aboutNormalized)
-	if err != nil {
-		return err
-	}
-
-	return s.repo.updateProfile(ctx, updateProfileParams{
-		OwnerID:     p.OwnerID,
-		DisplayName: displayNameNormalized,
-		About:       aboutNormalized,
-		Visibility:  p.Visibility,
-	})
-}
-
-type UpdateUsernameParams struct {
-	UserID      uuid.UUID
-	Username    string
-	NewUsername string
-}
-
-func (s *UserService) UpdateUsername(ctx context.Context, p UpdateUsernameParams) (usename string, err error) {
-	newUsernameNormalized := auth.NormKey(p.NewUsername)
-	if err := auth.ValidateUsernameKey(newUsernameNormalized); err != nil {
-		return "", fmt.Errorf("%w: %w", ErrorNewUsernameInvalid, err)
-	}
-
-	if newUsernameNormalized == p.Username {
-		return p.Username, nil
-	}
-
-	row, err := s.repo.updateUsername(ctx, p.UserID, newUsernameNormalized)
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == usernameKeyUniqueConstraint {
-			return "", ErrorNewUsernameTaken
-		}
-		return "", err
-	}
-
-	return row.UsernameKey, nil
-}
-
 func (s *UserService) GetUserProfile(ctx context.Context, username string) (*GetUserProfileResult, error) {
 	profile, err := s.repo.profile(ctx, profileParams{Username: username})
 	if err != nil {
@@ -285,6 +229,62 @@ func (s *UserService) GetUserPhotos(ctx context.Context, p GetUserPhotosParams) 
 	}
 
 	return &result, nil
+}
+
+type UpdateProfileParams struct {
+	OwnerID     uuid.UUID
+	DisplayName string
+	About       string
+	Visibility  string
+}
+
+func (s *UserService) UpdateProfile(ctx context.Context, p UpdateProfileParams) error {
+	displayNameNormalized := auth.NormText(p.DisplayName)
+	err := auth.ValidateNameLength(displayNameNormalized)
+	if err != nil {
+		return err
+	}
+
+	aboutNormalized := auth.NormText(p.About)
+	err = ValidateAboutLength(aboutNormalized)
+	if err != nil {
+		return err
+	}
+
+	return s.repo.updateProfile(ctx, updateProfileParams{
+		OwnerID:     p.OwnerID,
+		DisplayName: displayNameNormalized,
+		About:       aboutNormalized,
+		Visibility:  p.Visibility,
+	})
+}
+
+type UpdateUsernameParams struct {
+	UserID      uuid.UUID
+	Username    string
+	NewUsername string
+}
+
+func (s *UserService) UpdateUsername(ctx context.Context, p UpdateUsernameParams) (usename string, err error) {
+	newUsernameNormalized := auth.NormKey(p.NewUsername)
+	if err := auth.ValidateUsernameKey(newUsernameNormalized); err != nil {
+		return "", fmt.Errorf("%w: %w", ErrorNewUsernameInvalid, err)
+	}
+
+	if newUsernameNormalized == p.Username {
+		return p.Username, nil
+	}
+
+	row, err := s.repo.updateUsername(ctx, p.UserID, newUsernameNormalized)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == usernameKeyUniqueConstraint {
+			return "", ErrorNewUsernameTaken
+		}
+		return "", err
+	}
+
+	return row.UsernameKey, nil
 }
 
 type owner struct {
