@@ -19,7 +19,7 @@ type authService interface {
 	Login(context.Context, string, string) (*auth.LoginResult, error)
 	Logout(context.Context, string) error
 	LogoutAll(context.Context, uuid.UUID) error
-	UpdatePassword(context.Context, auth.UpdatePasswordParams) error
+	UpdatePassword(context.Context, auth.UpdatePasswordParams) (*auth.UpdatePasswordResult, error)
 	SessionOwner(ctx context.Context, userID uuid.UUID) (*auth.SessionOwnerResult, error)
 	UsernameExists(ctx context.Context, username string) (bool, error)
 }
@@ -206,6 +206,7 @@ func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 type UpdateMyPasswordRequest struct {
 	OldPassword string `json:"oldPassword"`
 	NewPassword string `json:"newPassword"`
+	RevokeAll   bool   `json:"revokeAll"`
 }
 
 func (h *AuthHandler) UpdateMyPassword(w http.ResponseWriter, r *http.Request) {
@@ -237,14 +238,23 @@ func (h *AuthHandler) UpdateMyPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cookie, err := r.Cookie(middleware.SessionCookieName)
+	if err != nil {
+		middleware.ClearSessionCookie(w)
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	err := h.authService.UpdatePassword(ctx, auth.UpdatePasswordParams{
-		UserID:          userID,
-		Username:        username,
-		CurrentPassword: req.OldPassword,
-		NewPassword:     req.NewPassword,
+	result, err := h.authService.UpdatePassword(ctx, auth.UpdatePasswordParams{
+		UserID:              userID,
+		Username:            username,
+		CurrentPassword:     req.OldPassword,
+		NewPassword:         req.NewPassword,
+		CurrentSessionToken: cookie.Value,
+		RevokeAll:           req.RevokeAll,
 	})
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
@@ -259,11 +269,17 @@ func (h *AuthHandler) UpdateMyPassword(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, http.StatusConflict, "password_changed", "password changed in another session. Enter your current password and try again.")
 			return
 		}
+		if errors.Is(err, auth.ErrInvalidSession) {
+			middleware.ClearSessionCookie(w)
+			WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+			return
+		}
 		slog.Error("UpdatePassword: request failed", "error", err)
 		WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
 		return
 	}
 
+	middleware.SetSessionCookie(w, result.CookieToken, result.CookieExpiredAt)
 	w.WriteHeader(http.StatusNoContent)
 }
 

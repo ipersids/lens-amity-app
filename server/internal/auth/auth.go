@@ -212,58 +212,122 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Lo
 }
 
 type UpdatePasswordParams struct {
-	UserID          uuid.UUID
-	Username        string
-	CurrentPassword string
-	NewPassword     string
+	UserID              uuid.UUID
+	Username            string
+	CurrentPassword     string
+	NewPassword         string
+	CurrentSessionToken string
+	RevokeAll           bool
 }
 
-func (s *AuthService) UpdatePassword(ctx context.Context, p UpdatePasswordParams) error {
+type UpdatePasswordResult struct {
+	CookieToken     string
+	CookieExpiredAt time.Time
+}
+
+func (s *AuthService) UpdatePassword(ctx context.Context, p UpdatePasswordParams) (*UpdatePasswordResult, error) {
 	currentPassword := norm.NFC.String(p.CurrentPassword)
 	newPassword := norm.NFC.String(p.NewPassword)
 
 	if currentPassword == newPassword {
-		return fmt.Errorf("%w: old and new passwords should be different", ErrNewPasswordValidation)
+		return nil, fmt.Errorf("%w: old and new passwords should be different", ErrNewPasswordValidation)
 	}
 
 	user, err := s.store.Queries.GetPasswordHash(ctx, p.UserID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			_ = CompareHashAndPassword(dummyHash, []byte(currentPassword))
-			return ErrInvalidCredentials
+			return nil, ErrInvalidCredentials
 		}
-		return fmt.Errorf("%w: get password hash: %w", ErrInternal, err)
+		return nil, fmt.Errorf("%w: get password hash: %w", ErrInternal, err)
 	}
 
 	if err := CompareHashAndPassword(user.PasswordHash, []byte(currentPassword)); err != nil {
 		if errors.Is(err, ErrPasswordMismatch) {
-			return ErrInvalidCredentials
+			return nil, ErrInvalidCredentials
 		}
-		return fmt.Errorf("%w: compare password hash: %w", ErrInternal, err)
+		return nil, fmt.Errorf("%w: compare password hash: %w", ErrInternal, err)
 	}
 
 	if err := ValidatePassword(newPassword, []string{NormKey(p.Username)}); err != nil {
-		return fmt.Errorf("%w: %w", ErrNewPasswordValidation, err)
+		return nil, fmt.Errorf("%w: %w", ErrNewPasswordValidation, err)
 	}
 
 	newPasswordHash, err := GenerateFromPassword([]byte(newPassword))
 	if err != nil {
-		return fmt.Errorf("%w: generate password hash: %w", ErrInternal, err)
+		return nil, fmt.Errorf("%w: generate password hash: %w", ErrInternal, err)
 	}
 
-	_, err = s.store.Queries.UpdatePasswordHash(ctx, db.UpdatePasswordHashParams{
+	currentTokenHash, err := s.tokens.Hash(p.CurrentSessionToken)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidSession, err)
+	}
+
+	newCredentials, err := s.tokens.New()
+	if err != nil {
+		return nil, fmt.Errorf("%w: create session credentials: %w", ErrInternal, err)
+	}
+
+	tx, err := s.store.Pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%w: begin password update transaction: %w", ErrInternal, err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	queries := s.store.Queries.WithTx(tx)
+	_, err = queries.UpdatePasswordHash(ctx, db.UpdatePasswordHashParams{
 		UserID:              p.UserID,
 		CurrentPasswordHash: user.PasswordHash,
 		NewPasswordHash:     newPasswordHash,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrPasswordChanged
+			return nil, ErrPasswordChanged
 		}
-		return fmt.Errorf("%w: update password hash: %w", ErrInternal, err)
+		return nil, fmt.Errorf("%w: update password hash: %w", ErrInternal, err)
 	}
 
-	return nil
+	revokedAt := pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
+	switch {
+	case p.RevokeAll:
+		err = queries.RevokeAllSessions(ctx, db.RevokeAllSessionsParams{
+			RevokedAt: revokedAt,
+			UserID:    p.UserID,
+		})
+	default:
+		_, err = queries.RevokeSession(ctx, db.RevokeSessionParams{
+			RevokedAt: revokedAt,
+			TokenHash: currentTokenHash,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrInvalidSession
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: revoke sessions: %w", ErrInternal, err)
+	}
+
+	now := time.Now().UTC()
+	expiresAt := now.Add(s.config.AbsoluteTimeout)
+	_, err = queries.CreateSession(ctx, db.CreateSessionParams{
+		TokenHash:         newCredentials.hash,
+		UserID:            p.UserID,
+		CreatedAt:         now,
+		LastSeenAt:        now,
+		AbsoluteExpiresAt: expiresAt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: create replacement session: %w", ErrInternal, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("%w: commit password update transaction: %w", ErrInternal, err)
+	}
+
+	return &UpdatePasswordResult{
+		CookieToken:     newCredentials.cookie,
+		CookieExpiredAt: expiresAt,
+	}, nil
 }
 
 func (s *AuthService) Logout(ctx context.Context, cookie string) error {
