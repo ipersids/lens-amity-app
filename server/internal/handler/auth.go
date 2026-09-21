@@ -258,15 +258,15 @@ func (h *AuthHandler) UpdateMyPassword(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
-			WriteError(w, http.StatusBadRequest, "wrong_password", "given old password is invalid. Check typos and try again.")
+			WriteError(w, http.StatusBadRequest, "invalid_old_password", "given old password is invalid. Check typos and try again.")
 			return
 		}
 		if errors.Is(err, auth.ErrNewPasswordValidation) {
-			WriteError(w, http.StatusBadRequest, "invalid_password", err.Error())
+			WriteError(w, http.StatusBadRequest, "invalid_new_password", err.Error())
 			return
 		}
 		if errors.Is(err, auth.ErrPasswordChanged) {
-			WriteError(w, http.StatusConflict, "password_changed", "password changed in another session. Enter your current password and try again.")
+			WriteError(w, http.StatusConflict, "invalid_new_password", "password changed in another session. Enter your current password and try again.")
 			return
 		}
 		if errors.Is(err, auth.ErrInvalidSession) {

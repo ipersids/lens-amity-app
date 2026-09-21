@@ -85,6 +85,30 @@ const updateUsername = async (newUsername: string): Promise<updateUsernameRespon
   return data;
 };
 
-const usersService = { getUserProfile, getUserPhotos, updateUserProfile, updateUsername };
+export type updatePasswordProps = {
+  oldPassword: string;
+  newPassword: string;
+  revokeAll: boolean;
+};
+
+const updatePassword = async ({
+  oldPassword,
+  newPassword,
+  revokeAll,
+}: updatePasswordProps): Promise<void> => {
+  await internalApi.put<void>(`${baseUsersURL}/me/password`, {
+    oldPassword,
+    newPassword,
+    revokeAll,
+  });
+};
+
+const usersService = {
+  getUserProfile,
+  getUserPhotos,
+  updateUserProfile,
+  updateUsername,
+  updatePassword,
+};
 
 export default usersService;

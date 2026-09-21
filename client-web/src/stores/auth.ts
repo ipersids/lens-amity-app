@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { getApiErrorMessage } from "../services/api";
+import { getApiError } from "../services/api";
 import type { LoginItem, SignupItem } from "../services/auth";
 import authService from "../services/auth";
 
@@ -42,7 +42,7 @@ const useAuthStore = create<AuthState>()(
           try {
             await authService.signup({ ...input });
           } catch (err: unknown) {
-            throw new Error(getApiErrorMessage(err));
+            throw new Error(getApiError(err).error.message);
           } finally {
             set(() => ({ isLoading: false }));
           }
@@ -63,7 +63,7 @@ const useAuthStore = create<AuthState>()(
               },
             }));
           } catch (err: unknown) {
-            throw new Error(getApiErrorMessage(err));
+            throw new Error(getApiError(err).error.message);
           } finally {
             set(() => ({ isLoading: false }));
           }
@@ -93,7 +93,7 @@ const useAuthStore = create<AuthState>()(
           try {
             await authService.logoutAll();
           } catch (err: unknown) {
-            throw new Error(getApiErrorMessage(err));
+            throw new Error(getApiError(err).error.message);
           } finally {
             set(() => ({
               user: null,

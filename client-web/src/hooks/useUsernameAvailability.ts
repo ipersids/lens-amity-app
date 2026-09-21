@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { validateUsername } from "../features/auth/validation";
-import { getApiErrorMessage } from "../services/api";
+import { getApiError } from "../services/api";
 import authService from "../services/auth";
 
 type UsernameAvailabilityStatus =
-  | "default"
-  | "invalid"
-  | "checking"
-  | "available"
-  | "unavailable"
-  | "error"
-  | "unchanged";
+  "default" | "invalid" | "checking" | "available" | "unavailable" | "error" | "unchanged";
 
 const usernameStatusMessages: Record<UsernameAvailabilityStatus, string> = {
   default: "Usernames are first-come, first-served.",
@@ -71,8 +65,8 @@ const useUsernameAvailability = ({
         }
       } catch (err: unknown) {
         if (!controller.signal.aborted) {
-          const msg = getApiErrorMessage(err);
-          handleStatus("error", msg);
+          const msg = getApiError(err);
+          handleStatus("error", msg.error.message);
         }
       }
     }, delay);

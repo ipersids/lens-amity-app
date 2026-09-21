@@ -1,15 +1,16 @@
 import zxcvbn from "zxcvbn";
+import {
+  MAX_USERNAME_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  MIN_USERNAME_LENGTH,
+  USERNAME_REGEX,
+} from "../../constants";
 
 type PaswordValidationResult = {
   score: number;
   description: string;
   feedback: string;
 };
-
-const USERNAME_REGEX = /^[A-Za-z0-9_-]+$/;
-const MIN_USERNAME_LENGTH = 3;
-const MAX_USERNAME_LENGTH = 32;
-const MIN_PASSWORD_LENGTH = 15;
 
 const scoreToWord = (score: number): string => {
   return ["Very Weak", "Very Weak", "Weak", "Good", "Strong"][score] ?? "Unknown";

@@ -1,6 +1,6 @@
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { type ComponentPropsWithoutRef, useState } from "react";
-import { PASSWORD_MIN_LENGTH } from "../../../constants";
+import { MIN_PASSWORD_LENGTH } from "../../../constants";
 
 type PasswordFieldProps = Omit<ComponentPropsWithoutRef<"input">, "type"> & {
   label: string;
@@ -35,7 +35,7 @@ const PasswordField = ({
           name={name}
           type={isShown ? "text" : "password"}
           autoComplete={autoComplete}
-          minLength={PASSWORD_MIN_LENGTH}
+          minLength={MIN_PASSWORD_LENGTH}
           required={required}
           aria-invalid={!!error}
           aria-describedby={error ? errorId : undefined}
