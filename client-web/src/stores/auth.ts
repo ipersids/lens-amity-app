@@ -17,6 +17,7 @@ interface AuthActions {
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
   verifySession: () => Promise<void>;
+  clearSession: () => void;
   updateUsername: (newUsername: string) => void;
   updateDisplayName: (newDisplayName: string) => void;
 }
@@ -27,13 +28,21 @@ interface AuthState {
   actions: AuthActions;
 }
 
-const useAuthStore = create<AuthState>()(
+export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
       isLoading: false,
 
       actions: {
+        clearSession: () => {
+          set(() => ({
+            user: null,
+            isLoading: false,
+          }));
+          localStorage.removeItem(authStoreKey);
+        },
+
         signup: async (input) => {
           if (get().user || get().isLoading) return;
 
@@ -77,11 +86,7 @@ const useAuthStore = create<AuthState>()(
           try {
             await authService.logout();
           } finally {
-            set(() => ({
-              user: null,
-              isLoading: false,
-            }));
-            localStorage.removeItem(authStoreKey);
+            get().actions.clearSession();
           }
         },
 
@@ -92,14 +97,9 @@ const useAuthStore = create<AuthState>()(
 
           try {
             await authService.logoutAll();
+            get().actions.clearSession();
           } catch (err: unknown) {
             throw new Error(getApiError(err).error.message);
-          } finally {
-            set(() => ({
-              user: null,
-              isLoading: false,
-            }));
-            localStorage.removeItem(authStoreKey);
           }
         },
 
@@ -114,11 +114,7 @@ const useAuthStore = create<AuthState>()(
               isLoading: false,
             }));
           } catch {
-            set(() => ({
-              user: null,
-              isLoading: false,
-            }));
-            localStorage.removeItem(authStoreKey);
+            get().actions.clearSession();
           }
         },
 
@@ -154,11 +150,6 @@ const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
       }),
-      onRehydrateStorage: () => {
-        return (state) => {
-          void state?.actions.verifySession();
-        };
-      },
     },
   ),
 );

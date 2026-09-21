@@ -4,7 +4,13 @@ import { getApiError } from "../services/api";
 import authService from "../services/auth";
 
 type UsernameAvailabilityStatus =
-  "default" | "invalid" | "checking" | "available" | "unavailable" | "error" | "unchanged";
+  | "default"
+  | "invalid"
+  | "checking"
+  | "available"
+  | "unavailable"
+  | "error"
+  | "unchanged";
 
 const usernameStatusMessages: Record<UsernameAvailabilityStatus, string> = {
   default: "Usernames are first-come, first-served.",
