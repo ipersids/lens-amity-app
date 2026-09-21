@@ -90,9 +90,10 @@ const PasswordChange = ({ username }: { username: string }) => {
                 autoComplete="new-password"
                 name="new-password"
                 onChange={(event) => {
-                  setNewPassword(event.target.value);
+                  const value = event.target.value;
+                  setNewPassword(value);
 
-                  const passwordValidation = validatePassword(newPassword, [username]);
+                  const passwordValidation = validatePassword(value, [username]);
                   if (passwordValidation.feedback !== "") {
                     setError((state) => ({
                       ...state,
