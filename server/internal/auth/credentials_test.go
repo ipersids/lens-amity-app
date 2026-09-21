@@ -217,7 +217,7 @@ func TestValidatePassword(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validatePassword(tt.password, tt.userInputs)
+			err := ValidatePassword(tt.password, tt.userInputs)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("validatePassword(%q, %v) error = %v, wantErr %v", tt.password, tt.userInputs, err, tt.wantErr)
 			}

@@ -1,27 +1,6 @@
 import type { AxiosInstance } from "axios";
 import axios from "axios";
 
-export type ApiError = {
-  error: {
-    code: string;
-    message: string;
-  };
-};
-
-const isApiError = (value: unknown): value is ApiError => {
-  if (!value || typeof value !== "object" || !("error" in value)) return false;
-
-  const body = value.error;
-  return (
-    !!body &&
-    typeof body === "object" &&
-    "code" in body &&
-    typeof body.code === "string" &&
-    "message" in body &&
-    typeof body.message === "string"
-  );
-};
-
 const baseURL = import.meta.env.VITE_BASE_API_URL ?? "";
 
 // Default axios settings
@@ -66,35 +45,78 @@ internalApi.interceptors.request.use((config) => {
 
 // Helper function for extracting error message
 
-export const getApiErrorMessage = (
-  error: unknown,
-  fallback: string = "Ooops, something went wrong",
-): string => {
-  if (axios.isAxiosError(error)) {
-    const data = error.response?.data;
+export type ApiError = {
+  status?: number;
+  error: {
+    code: string;
+    message: string;
+  };
+};
 
-    if (data && typeof data === "string") {
-      return data;
+const isApiError = (value: unknown): value is ApiError => {
+  if (!value || typeof value !== "object" || !("error" in value)) return false;
+
+  const { error } = value;
+  return (
+    !!error &&
+    typeof error === "object" &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    "message" in error &&
+    typeof error.message === "string"
+  );
+};
+
+export const getApiError = (error: unknown): ApiError => {
+  if (axios.isAxiosError(error)) {
+    if (!error.response) {
+      return {
+        error: {
+          code: "network_error",
+          message: "Unable to reach the server. Try again.",
+        },
+      };
     }
+
+    const { data, status } = error.response;
 
     if (isApiError(data)) {
-      if (data.error.code === "invalid_credentials") {
-        return "Invalid username or password.";
+      if (status === 400) {
+        return {
+          status,
+          error: {
+            code: data.error.code,
+            message: data.error.message,
+          },
+        };
       }
 
-      if (data.error.message) {
-        return data.error.message;
+      if (status === 401) {
+        return {
+          status,
+          error: {
+            code: "unauthorized",
+            message: "Oh, this session has already expired. Login again to continue.",
+          },
+        };
       }
+
+      return { status, ...data };
     }
 
-    if (error.response?.status === 401) {
-      return "Oh, this session has already expired. Login again to continue.";
-    }
+    return {
+      status,
+      error: {
+        code: `http_${status}`,
+        message: "Something went wrong. Try again.",
+      },
+    };
   }
 
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return fallback;
+  return {
+    error: {
+      code: "unknown_error",
+      message: error instanceof Error ? error.message : "Something went wrong.",
+    },
+  };
 };

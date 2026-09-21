@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { getApiErrorMessage } from "../services/api";
+import { getApiError } from "../services/api";
 import type { LoginItem, SignupItem } from "../services/auth";
 import authService from "../services/auth";
 
@@ -17,7 +17,9 @@ interface AuthActions {
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
   verifySession: () => Promise<void>;
+  clearSession: () => void;
   updateUsername: (newUsername: string) => void;
+  updateDisplayName: (newDisplayName: string) => void;
 }
 
 interface AuthState {
@@ -26,13 +28,21 @@ interface AuthState {
   actions: AuthActions;
 }
 
-const useAuthStore = create<AuthState>()(
+export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
       isLoading: false,
 
       actions: {
+        clearSession: () => {
+          set(() => ({
+            user: null,
+            isLoading: false,
+          }));
+          localStorage.removeItem(authStoreKey);
+        },
+
         signup: async (input) => {
           if (get().user || get().isLoading) return;
 
@@ -41,7 +51,7 @@ const useAuthStore = create<AuthState>()(
           try {
             await authService.signup({ ...input });
           } catch (err: unknown) {
-            throw new Error(getApiErrorMessage(err));
+            throw new Error(getApiError(err).error.message);
           } finally {
             set(() => ({ isLoading: false }));
           }
@@ -62,7 +72,7 @@ const useAuthStore = create<AuthState>()(
               },
             }));
           } catch (err: unknown) {
-            throw new Error(getApiErrorMessage(err));
+            throw new Error(getApiError(err).error.message);
           } finally {
             set(() => ({ isLoading: false }));
           }
@@ -76,11 +86,7 @@ const useAuthStore = create<AuthState>()(
           try {
             await authService.logout();
           } finally {
-            set(() => ({
-              user: null,
-              isLoading: false,
-            }));
-            localStorage.removeItem(authStoreKey);
+            get().actions.clearSession();
           }
         },
 
@@ -91,14 +97,9 @@ const useAuthStore = create<AuthState>()(
 
           try {
             await authService.logoutAll();
+            get().actions.clearSession();
           } catch (err: unknown) {
-            throw new Error(getApiErrorMessage(err));
-          } finally {
-            set(() => ({
-              user: null,
-              isLoading: false,
-            }));
-            localStorage.removeItem(authStoreKey);
+            throw new Error(getApiError(err).error.message);
           }
         },
 
@@ -113,11 +114,7 @@ const useAuthStore = create<AuthState>()(
               isLoading: false,
             }));
           } catch {
-            set(() => ({
-              user: null,
-              isLoading: false,
-            }));
-            localStorage.removeItem(authStoreKey);
+            get().actions.clearSession();
           }
         },
 
@@ -133,6 +130,19 @@ const useAuthStore = create<AuthState>()(
             };
           });
         },
+
+        updateDisplayName: (newDisplayName: string) => {
+          set((state: AuthState) => {
+            if (!state.user) return {};
+
+            return {
+              user: {
+                ...state.user,
+                displayName: newDisplayName,
+              },
+            };
+          });
+        },
       },
     }),
     {
@@ -140,11 +150,6 @@ const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
       }),
-      onRehydrateStorage: () => {
-        return (state) => {
-          void state?.actions.verifySession();
-        };
-      },
     },
   ),
 );
@@ -156,3 +161,5 @@ export const useLogin = () => useAuthStore((state) => state.actions.login);
 export const useLogout = () => useAuthStore((state) => state.actions.logout);
 export const useLogoutAll = () => useAuthStore((state) => state.actions.logoutAll);
 export const useUpdateUsernameInStore = () => useAuthStore((state) => state.actions.updateUsername);
+export const useUpdateDisplayNameInStore = () =>
+  useAuthStore((state) => state.actions.updateDisplayName);

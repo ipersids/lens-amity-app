@@ -44,6 +44,7 @@ func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware fun
 
 	mux.Handle("PUT /api/users/me/profile", authRequiredMiddleware(h.user.UpdateMyProfile))
 	mux.Handle("PUT /api/users/me/username", authRequiredMiddleware(h.user.UpdateMyUsername))
+	mux.Handle("PUT /api/users/me/password", authRequiredMiddleware(h.auth.UpdateMyPassword))
 }
 
 func main() {

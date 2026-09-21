@@ -19,6 +19,7 @@ type authService interface {
 	Login(context.Context, string, string) (*auth.LoginResult, error)
 	Logout(context.Context, string) error
 	LogoutAll(context.Context, uuid.UUID) error
+	UpdatePassword(context.Context, auth.UpdatePasswordParams) (*auth.UpdatePasswordResult, error)
 	SessionOwner(ctx context.Context, userID uuid.UUID) (*auth.SessionOwnerResult, error)
 	UsernameExists(ctx context.Context, username string) (bool, error)
 }
@@ -199,6 +200,86 @@ func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	middleware.ClearSessionCookie(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type UpdateMyPasswordRequest struct {
+	OldPassword string `json:"oldPassword"`
+	NewPassword string `json:"newPassword"`
+	RevokeAll   bool   `json:"revokeAll"`
+}
+
+func (h *AuthHandler) UpdateMyPassword(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
+
+	var req UpdateMyPasswordRequest
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed JSON")
+		return
+	}
+
+	if req.NewPassword == "" || req.OldPassword == "" {
+		WriteError(w, http.StatusBadRequest, "malformed_json", "missing field")
+		return
+	}
+
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	username, ok := r.Context().Value(middleware.UsernameKey).(string)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	cookie, err := r.Cookie(middleware.SessionCookieName)
+	if err != nil {
+		middleware.ClearSessionCookie(w)
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.authService.UpdatePassword(ctx, auth.UpdatePasswordParams{
+		UserID:              userID,
+		Username:            username,
+		CurrentPassword:     req.OldPassword,
+		NewPassword:         req.NewPassword,
+		CurrentSessionToken: cookie.Value,
+		RevokeAll:           req.RevokeAll,
+	})
+	if err != nil {
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			WriteError(w, http.StatusBadRequest, "invalid_old_password", "given old password is invalid. Check typos and try again.")
+			return
+		}
+		if errors.Is(err, auth.ErrNewPasswordValidation) {
+			WriteError(w, http.StatusBadRequest, "invalid_new_password", err.Error())
+			return
+		}
+		if errors.Is(err, auth.ErrPasswordChanged) {
+			WriteError(w, http.StatusConflict, "invalid_new_password", "password changed in another session. Enter your current password and try again.")
+			return
+		}
+		if errors.Is(err, auth.ErrInvalidSession) {
+			middleware.ClearSessionCookie(w)
+			WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+			return
+		}
+		slog.Error("UpdatePassword: request failed", "error", err)
+		WriteError(w, statusForAuthError(err), "internal_error", "something went wrong")
+		return
+	}
+
+	middleware.SetSessionCookie(w, result.CookieToken, result.CookieExpiredAt)
 	w.WriteHeader(http.StatusNoContent)
 }
 

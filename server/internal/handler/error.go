@@ -26,6 +26,8 @@ func WriteError(w http.ResponseWriter, status int, code, message string) {
 		},
 	})
 
+	slog.Error("Request failed", "error", err)
+
 	if err != nil {
 		slog.Error("failed WriteError", "error", err)
 	}

@@ -26,7 +26,7 @@ type ProfileUpdateProps = {
 };
 
 const ProfileUpdate = ({ username, displayName, about, visibility }: ProfileUpdateProps) => {
-  const updateProfile = useUpdateProfile(username);
+  const updateProfile = useUpdateProfile();
   const [updatedDisplayName, setUpdatedDisplayName] = useState<string | undefined>(displayName);
   const [updatedAbout, setUpdatedAbout] = useState<string | undefined>(about);
   const [updatedVisibility, setUpdatedVisibility] = useState<Visibility>(visibility);
@@ -49,10 +49,10 @@ const ProfileUpdate = ({ username, displayName, about, visibility }: ProfileUpda
       },
       {
         onSuccess: () => {
-          // TODO: notify success
+          // @ODO: notify success
         },
         onError: (_error) => {
-          // notify error console.log(getApiErrorMessage(error));
+          // @TODO: notify error console.log(getApiErrorMessage(error));
         },
       },
     );

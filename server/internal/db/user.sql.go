@@ -41,6 +41,24 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 	return i, err
 }
 
+const getPasswordHash = `-- name: GetPasswordHash :one
+SELECT id, username_key, password_hash FROM users
+WHERE id = $1
+`
+
+type GetPasswordHashRow struct {
+	ID           uuid.UUID
+	UsernameKey  string
+	PasswordHash string
+}
+
+func (q *Queries) GetPasswordHash(ctx context.Context, userID uuid.UUID) (GetPasswordHashRow, error) {
+	row := q.db.QueryRow(ctx, getPasswordHash, userID)
+	var i GetPasswordHashRow
+	err := row.Scan(&i.ID, &i.UsernameKey, &i.PasswordHash)
+	return i, err
+}
+
 const getUserAccessProfile = `-- name: GetUserAccessProfile :one
 SELECT id, profile_visibility
 FROM users
@@ -250,6 +268,28 @@ func (q *Queries) ListUserPhotosFirstPage(ctx context.Context, arg ListUserPhoto
 		return nil, err
 	}
 	return items, nil
+}
+
+const updatePasswordHash = `-- name: UpdatePasswordHash :one
+UPDATE users
+SET password_hash = $1,
+    updated_at = now()
+WHERE id = $2
+  AND password_hash = $3
+RETURNING id
+`
+
+type UpdatePasswordHashParams struct {
+	NewPasswordHash     string
+	UserID              uuid.UUID
+	CurrentPasswordHash string
+}
+
+func (q *Queries) UpdatePasswordHash(ctx context.Context, arg UpdatePasswordHashParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, updatePasswordHash, arg.NewPasswordHash, arg.UserID, arg.CurrentPasswordHash)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const updateUserProfile = `-- name: UpdateUserProfile :one

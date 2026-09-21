@@ -1,16 +1,20 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ProfileQueryKey } from "../constants";
+import { normalizeText } from "../features/auth/validation";
 import type { UpdateProfileProps, UserProfileResponse } from "../services/users";
 import usersService from "../services/users";
+import { useUpdateDisplayNameInStore, useUser } from "../stores/auth";
 
-const useUpdateProfile = (username: string) => {
+const useUpdateProfile = () => {
+  const currentUser = useUser();
   const queryClient = useQueryClient();
-  const queryKey = ProfileQueryKey(username);
+  const queryKey = ProfileQueryKey(currentUser?.username ?? "");
+  const updateDisplayNameInStore = useUpdateDisplayNameInStore();
 
   return useMutation({
     mutationFn: usersService.updateUserProfile,
     onMutate: async (changes: UpdateProfileProps) => {
-      await queryClient.cancelQueries({ queryKey });
+      await queryClient.cancelQueries({ queryKey, exact: true });
 
       const previousProfile = queryClient.getQueryData<UserProfileResponse>(queryKey);
 
@@ -19,7 +23,8 @@ const useUpdateProfile = (username: string) => {
           ? {
               ...profile,
               ...changes,
-              about: changes.about ?? "",
+              displayName: normalizeText(changes.displayName),
+              about: normalizeText(changes.about ?? ""),
             }
           : profile,
       );
@@ -27,14 +32,14 @@ const useUpdateProfile = (username: string) => {
       return { previousProfile };
     },
 
-    onError: (_error, _changes, context) => {
-      if (context?.previousProfile) {
-        queryClient.setQueryData(queryKey, context.previousProfile);
+    onError: (_error, _changes, onMutateResult) => {
+      if (onMutateResult?.previousProfile) {
+        queryClient.setQueryData(queryKey, onMutateResult.previousProfile);
       }
     },
 
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey });
+    onSuccess: (_data, changes) => {
+      updateDisplayNameInStore(normalizeText(changes.displayName));
     },
   });
 };

@@ -15,6 +15,12 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
+const (
+	idleTimeout     = 36 * time.Hour
+	AbsoluteTimeout = 7 * 24 * time.Hour
+	touchInterval   = 15 * time.Minute
+)
+
 // Docs:
 // - NIST, SP 800-63B, authentication assurance: https://pages.nist.gov/800-63-4/sp800-63b.html
 // - Unicode, Technical Standard #39, https://www.unicode.org/reports/tr39/#Restriction_Level_Detection
@@ -43,9 +49,9 @@ func NewAuthService(store *db.Store, sessionSecret string) (*AuthService, error)
 
 	return &AuthService{
 		config: Config{
-			IdleTimeout:     36 * time.Hour,
-			AbsoluteTimeout: 7 * 24 * time.Hour,
-			TouchInterval:   15 * time.Minute,
+			IdleTimeout:     idleTimeout,
+			AbsoluteTimeout: AbsoluteTimeout,
+			TouchInterval:   touchInterval,
 		},
 		store:  store,
 		tokens: newSessionTokens(sessionSecret),
@@ -56,6 +62,8 @@ var (
 	ErrUsernameUnavailable      = errors.New("username is not available")
 	ErrUsernameValidationFailed = errors.New("invalid username")
 	ErrInvalidCredentials       = errors.New("invalid credentials")
+	ErrNewPasswordValidation    = errors.New("invalid new password")
+	ErrPasswordChanged          = errors.New("password changed in another session")
 	ErrInvalidSession           = errors.New("invalid session")
 	ErrInternal                 = errors.New("internal error")
 )
@@ -79,7 +87,7 @@ func (s *AuthService) Signup(ctx context.Context, username, displayName, passwor
 		return nil, err
 	}
 
-	if err := validatePassword(p, []string{ukey, udisplay}); err != nil {
+	if err := ValidatePassword(p, []string{ukey}); err != nil {
 		return nil, err
 	}
 
@@ -91,7 +99,7 @@ func (s *AuthService) Signup(ctx context.Context, username, displayName, passwor
 		return nil, err
 	}
 
-	hash, err := generateFromPassword([]byte(p))
+	hash, err := GenerateFromPassword([]byte(p))
 	if err != nil {
 		return nil, fmt.Errorf("%w: generate password hash: %w", ErrInternal, err)
 	}
@@ -161,13 +169,13 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Lo
 		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Keep timing close to a wrong password.
-			_ = compareHashAndPassword(dummyHash, []byte(p))
+			_ = CompareHashAndPassword(dummyHash, []byte(p))
 			return nil, ErrInvalidCredentials
 		}
 		return nil, fmt.Errorf("%w: get full user data by key: %w", ErrInternal, err)
 	}
 
-	if err := compareHashAndPassword(uPrivate.PasswordHash, []byte(p)); err != nil {
+	if err := CompareHashAndPassword(uPrivate.PasswordHash, []byte(p)); err != nil {
 		if errors.Is(err, ErrPasswordMismatch) {
 			return nil, ErrInvalidCredentials
 		}
@@ -199,6 +207,125 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Lo
 		Username:        uPrivate.UsernameKey,
 		DisplayName:     uPrivate.UsernameDisplay,
 		CookieToken:     cookieCredentials.cookie,
+		CookieExpiredAt: expiresAt,
+	}, nil
+}
+
+type UpdatePasswordParams struct {
+	UserID              uuid.UUID
+	Username            string
+	CurrentPassword     string
+	NewPassword         string
+	CurrentSessionToken string
+	RevokeAll           bool
+}
+
+type UpdatePasswordResult struct {
+	CookieToken     string
+	CookieExpiredAt time.Time
+}
+
+func (s *AuthService) UpdatePassword(ctx context.Context, p UpdatePasswordParams) (*UpdatePasswordResult, error) {
+	currentPassword := norm.NFC.String(p.CurrentPassword)
+	newPassword := norm.NFC.String(p.NewPassword)
+
+	if currentPassword == newPassword {
+		return nil, fmt.Errorf("%w: old and new passwords should be different", ErrNewPasswordValidation)
+	}
+
+	user, err := s.store.Queries.GetPasswordHash(ctx, p.UserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			_ = CompareHashAndPassword(dummyHash, []byte(currentPassword))
+			return nil, ErrInvalidCredentials
+		}
+		return nil, fmt.Errorf("%w: get password hash: %w", ErrInternal, err)
+	}
+
+	if err := CompareHashAndPassword(user.PasswordHash, []byte(currentPassword)); err != nil {
+		if errors.Is(err, ErrPasswordMismatch) {
+			return nil, ErrInvalidCredentials
+		}
+		return nil, fmt.Errorf("%w: compare password hash: %w", ErrInternal, err)
+	}
+
+	if err := ValidatePassword(newPassword, []string{NormKey(p.Username)}); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrNewPasswordValidation, err)
+	}
+
+	newPasswordHash, err := GenerateFromPassword([]byte(newPassword))
+	if err != nil {
+		return nil, fmt.Errorf("%w: generate password hash: %w", ErrInternal, err)
+	}
+
+	currentTokenHash, err := s.tokens.Hash(p.CurrentSessionToken)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidSession, err)
+	}
+
+	newCredentials, err := s.tokens.New()
+	if err != nil {
+		return nil, fmt.Errorf("%w: create session credentials: %w", ErrInternal, err)
+	}
+
+	tx, err := s.store.Pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%w: begin password update transaction: %w", ErrInternal, err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	queries := s.store.Queries.WithTx(tx)
+	_, err = queries.UpdatePasswordHash(ctx, db.UpdatePasswordHashParams{
+		UserID:              p.UserID,
+		CurrentPasswordHash: user.PasswordHash,
+		NewPasswordHash:     newPasswordHash,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrPasswordChanged
+		}
+		return nil, fmt.Errorf("%w: update password hash: %w", ErrInternal, err)
+	}
+
+	revokedAt := pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
+	switch {
+	case p.RevokeAll:
+		err = queries.RevokeAllSessions(ctx, db.RevokeAllSessionsParams{
+			RevokedAt: revokedAt,
+			UserID:    p.UserID,
+		})
+	default:
+		_, err = queries.RevokeSession(ctx, db.RevokeSessionParams{
+			RevokedAt: revokedAt,
+			TokenHash: currentTokenHash,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrInvalidSession
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: revoke sessions: %w", ErrInternal, err)
+	}
+
+	now := time.Now().UTC()
+	expiresAt := now.Add(s.config.AbsoluteTimeout)
+	_, err = queries.CreateSession(ctx, db.CreateSessionParams{
+		TokenHash:         newCredentials.hash,
+		UserID:            p.UserID,
+		CreatedAt:         now,
+		LastSeenAt:        now,
+		AbsoluteExpiresAt: expiresAt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: create replacement session: %w", ErrInternal, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("%w: commit password update transaction: %w", ErrInternal, err)
+	}
+
+	return &UpdatePasswordResult{
+		CookieToken:     newCredentials.cookie,
 		CookieExpiredAt: expiresAt,
 	}, nil
 }
