@@ -708,6 +708,26 @@ footer {
   background: var(--primary-hover);
 }
 
+.dialog-save-button.dialog-delete-button,
+.dialog-save-button.dialog-delete-button:hover {
+  background: var(--error);
+  color: #ffffff;
+}
+
+.dialog-save-button.dialog-delete-button:hover {
+  background: #b91c1c;
+}
+
+.settings-danger-zone .dialog-trigger,
+.settings-danger-zone .dialog-trigger:hover {
+  background: var(--error);
+  color: #ffffff;
+}
+
+.settings-danger-zone .dialog-trigger:hover {
+  background: #b91c1c;
+}
+
 .dialog-cancel-button:hover {
   background: var(--border);
 }
@@ -717,6 +737,31 @@ footer {
   background: var(--surface-muted);
   color: var(--muted);
   cursor: not-allowed;
+}
+
+.button-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  border: 3px solid rgb(255 255 255 / 32%);
+  border-top-color: #ffffff;
+  border-right-color: #ffffff;
+  border-radius: 50%;
+  animation: button-spin 0.65s linear infinite;
+  vertical-align: -4px;
+}
+
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button-spinner {
+    animation: none;
+  }
 }
 
 .dialog-close-button {

@@ -16,8 +16,8 @@ const AccountSettings = () => {
       <h2>Account</h2>
 
       <UsernameChange username={currentUser.username} />
-      <PasswordChange />
-      <AccountDelete />
+      <PasswordChange username={currentUser.username} />
+      <AccountDelete username={currentUser.username} />
     </div>
   );
 };

@@ -1,14 +1,78 @@
-const AccountDelete = () => {
+import { XMarkIcon } from "@heroicons/react/24/outline";
+import { useQueryClient } from "@tanstack/react-query";
+import { Dialog } from "radix-ui";
+import { useState } from "react";
+import { useNavigate } from "react-router";
+import { useAuthStore } from "../../../stores/auth";
+
+const AccountDelete = ({ username }: { username: string }) => {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const clearSession = useAuthStore((state) => state.actions.clearSession);
+  const [open, setOpen] = useState<boolean>(false);
+
+  const deleteAccount = { isPending: false };
+
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+  };
+
+  const handleDeleteAccount = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setOpen(false);
+    queryClient.clear();
+    clearSession();
+    navigate(`/users/${username}`);
+  };
+
   return (
-    <div className="settings-account-action settings-danger-zone">
-      <div>
-        <h3>Delete account</h3>
-        <p>Permanently remove your account and profile.</p>
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
+      <div className="settings-account-action settings-danger-zone">
+        <div>
+          <h3>Delete account</h3>
+          <p>Permanently remove your profile and photos.</p>
+        </div>
+        <Dialog.Trigger asChild>
+          <button className="dialog-trigger" type="button">
+            Delete account
+          </button>
+        </Dialog.Trigger>
       </div>
-      <button type="button" disabled>
-        Delete account
-      </button>
-    </div>
+      <Dialog.Portal>
+        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Content className="dialog-content">
+          <Dialog.Title className="dialog-title">Are you sure you want to do this?</Dialog.Title>
+          <Dialog.Description className="dialog-description">
+            Once you delete your account, there is no going back. Please be certain.
+          </Dialog.Description>
+          <div className="dialog-actions">
+            <Dialog.Close asChild>
+              <button className="dialog-cancel-button" type="button">
+                Cancel
+              </button>
+            </Dialog.Close>
+            <Dialog.Close asChild>
+              <button
+                className="dialog-save-button dialog-delete-button"
+                type="button"
+                onClick={(e) => handleDeleteAccount(e)}
+                disabled={deleteAccount.isPending}
+              >
+                {deleteAccount.isPending && <span className="button-spinner" aria-hidden="true" />}
+                {deleteAccount.isPending ? "Deleting..." : "Yes, delete my account"}
+              </button>
+            </Dialog.Close>
+          </div>
+          <Dialog.Close asChild>
+            <button className="dialog-close-button" type="button" aria-label="Close">
+              <XMarkIcon />
+            </button>
+          </Dialog.Close>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 };
 
