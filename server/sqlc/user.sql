@@ -96,3 +96,10 @@ WHERE owner_user_id = sqlc.arg(user_id)
   AND (photo_date, id) < (sqlc.arg(cursor_photo_date)::date, sqlc.arg(cursor_id)::uuid)
 ORDER BY photo_date DESC, id DESC
 LIMIT sqlc.arg(limit_count);
+
+-- name: ListUserAllPhotos :many
+SELECT object_key_original
+FROM photos
+WHERE owner_user_id = sqlc.arg(user_id)
+  AND status = 'ready'
+  AND deleted_at IS NULL;

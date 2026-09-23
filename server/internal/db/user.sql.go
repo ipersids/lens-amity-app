@@ -152,6 +152,34 @@ func (q *Queries) GetUserProfile(ctx context.Context, usernameKey string) (GetUs
 	return i, err
 }
 
+const listUserAllPhotos = `-- name: ListUserAllPhotos :many
+SELECT object_key_original
+FROM photos
+WHERE owner_user_id = $1
+  AND status = 'ready'
+  AND deleted_at IS NULL
+`
+
+func (q *Queries) ListUserAllPhotos(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listUserAllPhotos, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var object_key_original string
+		if err := rows.Scan(&object_key_original); err != nil {
+			return nil, err
+		}
+		items = append(items, object_key_original)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserPhotosAfterCursor = `-- name: ListUserPhotosAfterCursor :many
 SELECT photos.id, photos.owner_user_id, photos.status, photos.failure_reason, photos.bucket, photos.object_key_original, photos.object_key_processed, photos.content_type, photos.size, photos.width, photos.height, photos.photo_date, photos.title, photos.description, photos.created_at, photos.uploaded_at, photos.processed_at, photos.expires_at, photos.deleted_at
 FROM photos
