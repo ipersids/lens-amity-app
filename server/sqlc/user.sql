@@ -103,3 +103,6 @@ FROM photos
 WHERE owner_user_id = sqlc.arg(user_id)
   AND status = 'ready'
   AND deleted_at IS NULL;
+
+-- name: DeleteProfile :exec
+DELETE FROM users WHERE id = sqlc.arg(user_id);
