@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"lensamity/internal/db"
 	"lensamity/internal/storage"
+	"log/slog"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -139,4 +142,72 @@ func (r *usersRepository) updateUsername(ctx context.Context, userID uuid.UUID, 
 	}
 
 	return &row, nil
+}
+
+func (r *usersRepository) deleteProfile(ctx context.Context, userID uuid.UUID) error {
+	err := r.store.Queries.DeleteProfile(ctx, userID)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *usersRepository) photosKeys(ctx context.Context, userID uuid.UUID) (map[string][]types.ObjectIdentifier, error) {
+	res := make(map[string][]types.ObjectIdentifier)
+	rows, err := r.store.Queries.ListUserAllImages(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return res, nil
+		}
+		return nil, err
+	}
+
+	for _, row := range rows {
+		res[row.Bucket] = append(res[row.Bucket], types.ObjectIdentifier{Key: &row.ObjectKeyOriginal})
+	}
+
+	return res, nil
+}
+
+func (r *usersRepository) deleteObjects(ctx context.Context, bucket string, objects []types.ObjectIdentifier) error {
+	if len(objects) == 0 {
+		return nil
+	}
+
+	input := s3.DeleteObjectsInput{
+		Bucket: aws.String(bucket),
+		Delete: &types.Delete{
+			Objects: objects,
+			Quiet:   aws.Bool(true),
+		},
+	}
+
+	delOut, err := r.s3.Client.DeleteObjects(ctx, &input)
+	if err != nil || len(delOut.Errors) > 0 {
+		slog.Error("Error deleting objects from bucket %s.\n", bucket)
+		if err != nil {
+			var noBucket *types.NoSuchBucket
+			if errors.As(err, &noBucket) {
+				err = noBucket
+			} else if len(delOut.Errors) > 0 {
+				for _, outErr := range delOut.Errors {
+					slog.Error("%s: %s\n", *outErr.Key, *outErr.Message)
+				}
+				err = fmt.Errorf("%s", *delOut.Errors[0].Message)
+			}
+		} else {
+			for _, delObjs := range delOut.Deleted {
+				err = s3.NewObjectNotExistsWaiter(r.s3.Client).Wait(
+					ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: delObjs.Key}, time.Minute)
+				if err != nil {
+					slog.Error("Failed attempt to wait for object %s to be deleted.\n", *delObjs.Key)
+				} else {
+					// @TODO Save failed Keys to delete them later
+					slog.Error("Deleted %s.\n", *delObjs.Key)
+				}
+			}
+		}
+	}
+
+	return err
 }

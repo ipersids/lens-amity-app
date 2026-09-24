@@ -42,6 +42,7 @@ func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware fun
 	mux.HandleFunc("PUT /api/photos/upload", authRequiredMiddleware(h.photo.UploadIntent))
 	mux.HandleFunc("PUT /api/photos/{id}/complete", authRequiredMiddleware(h.photo.UploadComplete))
 
+	mux.Handle("DELETE /api/users/me", authRequiredMiddleware(h.user.DeleteMyProfile))
 	mux.Handle("PUT /api/users/me/profile", authRequiredMiddleware(h.user.UpdateMyProfile))
 	mux.Handle("PUT /api/users/me/username", authRequiredMiddleware(h.user.UpdateMyUsername))
 	mux.Handle("PUT /api/users/me/password", authRequiredMiddleware(h.auth.UpdateMyPassword))

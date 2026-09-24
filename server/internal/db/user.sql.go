@@ -161,27 +161,36 @@ func (q *Queries) GetUserProfile(ctx context.Context, usernameKey string) (GetUs
 	return i, err
 }
 
-const listUserAllPhotos = `-- name: ListUserAllPhotos :many
-SELECT object_key_original
-FROM photos
-WHERE owner_user_id = $1
-  AND status = 'ready'
-  AND deleted_at IS NULL
+const listUserAllImages = `-- name: ListUserAllImages :many
+SELECT p.bucket, p.object_key_original
+FROM photos p
+WHERE p.owner_user_id = $1
+  AND p.status = 'ready'
+  AND p.deleted_at IS NULL
+UNION ALL
+SELECT a.bucket, a.object_key AS object_key_original
+FROM user_avatars a
+WHERE a.user_id = $1
 `
 
-func (q *Queries) ListUserAllPhotos(ctx context.Context, userID uuid.UUID) ([]string, error) {
-	rows, err := q.db.Query(ctx, listUserAllPhotos, userID)
+type ListUserAllImagesRow struct {
+	Bucket            string
+	ObjectKeyOriginal string
+}
+
+func (q *Queries) ListUserAllImages(ctx context.Context, userID uuid.UUID) ([]ListUserAllImagesRow, error) {
+	rows, err := q.db.Query(ctx, listUserAllImages, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []ListUserAllImagesRow
 	for rows.Next() {
-		var object_key_original string
-		if err := rows.Scan(&object_key_original); err != nil {
+		var i ListUserAllImagesRow
+		if err := rows.Scan(&i.Bucket, &i.ObjectKeyOriginal); err != nil {
 			return nil, err
 		}
-		items = append(items, object_key_original)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -288,3 +288,23 @@ func (h *UserHandler) UpdateMyUsername(w http.ResponseWriter, r *http.Request) {
 		slog.Error("UserProfile handler: failed encode response", "error", err)
 	}
 }
+
+func (h *UserHandler) DeleteMyProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	err := h.userService.DeleteProfile(ctx, userID)
+	if err != nil {
+		slog.Error("%w", err)
+		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

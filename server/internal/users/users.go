@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -31,6 +32,9 @@ type usersStore interface {
 	photosPage(ctx context.Context, p photosPageParams) ([]db.Photo, error)
 	updateProfile(ctx context.Context, p updateProfileParams) error
 	updateUsername(ctx context.Context, userID uuid.UUID, newUsername string) (*db.UpdateUsernameRow, error)
+	deleteProfile(ctx context.Context, userID uuid.UUID) error
+	photosKeys(ctx context.Context, userID uuid.UUID) (map[string][]types.ObjectIdentifier, error)
+	deleteObjects(ctx context.Context, bucket string, objects []types.ObjectIdentifier) error
 }
 
 func NewUserService(store *db.Store, s3Client *storage.Client) (*UserService, error) {
@@ -47,12 +51,14 @@ func NewUserService(store *db.Store, s3Client *storage.Client) (*UserService, er
 }
 
 var (
-	ErrorGetUserProfile     = errors.New("user profile not found")
-	ErrorGetUserPhotoPage   = errors.New("photos not found")
-	ErrorInvalidCursor      = errors.New("invalid cursor")
-	ErrorInvalidAboutLength = errors.New("about is longer than 300 characters")
-	ErrorNewUsernameInvalid = errors.New("invalid new username")
-	ErrorNewUsernameTaken   = errors.New("new username is already taken")
+	ErrorGetUserProfile            = errors.New("user profile not found")
+	ErrorGetUserPhotoPage          = errors.New("photos not found")
+	ErrorInvalidCursor             = errors.New("invalid cursor")
+	ErrorInvalidAboutLength        = errors.New("about is longer than 300 characters")
+	ErrorNewUsernameInvalid        = errors.New("invalid new username")
+	ErrorNewUsernameTaken          = errors.New("new username is already taken")
+	ErrorFailedToDeleteSomeObjects = errors.New("failed to delete some photos")
+	ErrorFailedToDeleteProfile     = errors.New("failed to delete profile")
 )
 
 const usernameKeyUniqueConstraint = "users_username_key_key"
@@ -285,6 +291,27 @@ func (s *UserService) UpdateUsername(ctx context.Context, p UpdateUsernameParams
 	}
 
 	return row.UsernameKey, nil
+}
+
+func (s *UserService) DeleteProfile(ctx context.Context, userID uuid.UUID) error {
+	objects, err := s.repo.photosKeys(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	for bucket := range objects {
+		err := s.repo.deleteObjects(ctx, bucket, objects[bucket])
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrorFailedToDeleteSomeObjects, err)
+		}
+	}
+
+	err = s.repo.deleteProfile(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrorFailedToDeleteProfile, err)
+	}
+
+	return nil
 }
 
 type owner struct {

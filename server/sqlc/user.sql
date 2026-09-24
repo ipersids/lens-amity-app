@@ -97,12 +97,16 @@ WHERE owner_user_id = sqlc.arg(user_id)
 ORDER BY photo_date DESC, id DESC
 LIMIT sqlc.arg(limit_count);
 
--- name: ListUserAllPhotos :many
-SELECT object_key_original
-FROM photos
-WHERE owner_user_id = sqlc.arg(user_id)
-  AND status = 'ready'
-  AND deleted_at IS NULL;
+-- name: ListUserAllImages :many
+SELECT p.bucket, p.object_key_original
+FROM photos p
+WHERE p.owner_user_id = sqlc.arg(user_id)
+  AND p.status = 'ready'
+  AND p.deleted_at IS NULL
+UNION ALL
+SELECT a.bucket, a.object_key AS object_key_original
+FROM user_avatars a
+WHERE a.user_id = sqlc.arg(user_id);
 
 -- name: DeleteProfile :exec
 DELETE FROM users WHERE id = sqlc.arg(user_id);
