@@ -61,7 +61,10 @@ var (
 	ErrorFailedToDeleteProfile     = errors.New("failed to delete profile")
 )
 
-const usernameKeyUniqueConstraint = "users_username_key_key"
+const (
+	usernameKeyUniqueConstraint = "users_username_key_key"
+	deleteBatchSize             = 1000
+)
 
 type GetUserProfileResult struct {
 	ID                     uuid.UUID
@@ -299,10 +302,21 @@ func (s *UserService) DeleteProfile(ctx context.Context, userID uuid.UUID) error
 		return err
 	}
 
-	for bucket := range objects {
-		err := s.repo.deleteObjects(ctx, bucket, objects[bucket])
-		if err != nil {
-			return fmt.Errorf("%w: %w", ErrorFailedToDeleteSomeObjects, err)
+	for bucket, objectIDs := range objects {
+		for start := 0; start < len(objectIDs); start += deleteBatchSize {
+			end := min(start+deleteBatchSize, len(objectIDs))
+			batch := objectIDs[start:end]
+
+			if err := s.repo.deleteObjects(ctx, bucket, batch); err != nil {
+				return fmt.Errorf(
+					"%w: bucket %q, objects %d-%d: %w",
+					ErrorFailedToDeleteSomeObjects,
+					bucket,
+					start,
+					end,
+					err,
+				)
+			}
 		}
 	}
 

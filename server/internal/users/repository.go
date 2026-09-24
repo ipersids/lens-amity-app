@@ -169,45 +169,56 @@ func (r *usersRepository) photosKeys(ctx context.Context, userID uuid.UUID) (map
 	return res, nil
 }
 
-func (r *usersRepository) deleteObjects(ctx context.Context, bucket string, objects []types.ObjectIdentifier) error {
+func (r *usersRepository) deleteObjects(
+	ctx context.Context,
+	bucket string,
+	objects []types.ObjectIdentifier,
+) error {
 	if len(objects) == 0 {
 		return nil
 	}
 
-	input := s3.DeleteObjectsInput{
+	if len(objects) > 1000 {
+		return fmt.Errorf("S3 DeleteObjects accepts at most 1000 objects, got %d", len(objects))
+	}
+
+	delOut, err := r.s3.Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 		Bucket: aws.String(bucket),
 		Delete: &types.Delete{
 			Objects: objects,
 			Quiet:   aws.Bool(true),
 		},
+	})
+	if err != nil {
+		return fmt.Errorf("delete objects from bucket %q: %w", bucket, err)
 	}
 
-	delOut, err := r.s3.Client.DeleteObjects(ctx, &input)
-	if err != nil || len(delOut.Errors) > 0 {
-		slog.Error("Error deleting objects from bucket ", bucket, "")
-		if err != nil {
-			var noBucket *types.NoSuchBucket
-			if errors.As(err, &noBucket) {
-				err = noBucket
-			} else if len(delOut.Errors) > 0 {
-				for _, outErr := range delOut.Errors {
-					slog.Error("%s: %s\n", *outErr.Key, *outErr.Message)
-				}
-				err = fmt.Errorf("%s", *delOut.Errors[0].Message)
-			}
-		} else {
-			for _, delObjs := range delOut.Deleted {
-				err = s3.NewObjectNotExistsWaiter(r.s3.Client).Wait(
-					ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: delObjs.Key}, time.Minute)
-				if err != nil {
-					slog.Error("Failed attempt to wait for object ", *delObjs.Key, "to be deleted.")
-				} else {
-					// @TODO Save failed Keys to delete them later
-					slog.Error("Deleted ", *delObjs.Key, "")
-				}
-			}
-		}
+	if len(delOut.Errors) == 0 {
+		return nil
 	}
 
-	return err
+	deleteErrors := make([]error, 0, len(delOut.Errors))
+
+	for _, deleteErr := range delOut.Errors {
+		key := aws.ToString(deleteErr.Key)
+		code := aws.ToString(deleteErr.Code)
+		message := aws.ToString(deleteErr.Message)
+
+		slog.Error(
+			"S3 could not delete object",
+			"bucket", bucket,
+			"key", key,
+			"code", code,
+			"message", message,
+		)
+
+		deleteErrors = append(deleteErrors, fmt.Errorf("%s: %s", key, message))
+	}
+
+	return fmt.Errorf(
+		"could not delete %d object(s) from bucket %q: %w",
+		len(deleteErrors),
+		bucket,
+		errors.Join(deleteErrors...),
+	)
 }
