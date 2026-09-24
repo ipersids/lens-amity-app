@@ -7,7 +7,7 @@ import { getApiError } from "../../../services/api";
 import usersService from "../../../services/users";
 import { useAuthStore } from "../../../stores/auth";
 
-const AccountDelete = ({ username }: { username: string }) => {
+const AccountDelete = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const clearSession = useAuthStore((state) => state.actions.clearSession);
@@ -20,7 +20,7 @@ const AccountDelete = ({ username }: { username: string }) => {
       setOpen(false);
       queryClient.clear();
       clearSession();
-      navigate(`/users/${username}`);
+      navigate(`/signup`, { replace: true });
     },
     onError: (error) => {
       const err = getApiError(error);

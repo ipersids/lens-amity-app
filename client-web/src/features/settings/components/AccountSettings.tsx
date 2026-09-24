@@ -17,7 +17,7 @@ const AccountSettings = () => {
 
       <UsernameChange username={currentUser.username} />
       <PasswordChange username={currentUser.username} />
-      <AccountDelete username={currentUser.username} />
+      <AccountDelete />
     </div>
   );
 };

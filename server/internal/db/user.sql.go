@@ -165,8 +165,6 @@ const listUserAllImages = `-- name: ListUserAllImages :many
 SELECT p.bucket, p.object_key_original
 FROM photos p
 WHERE p.owner_user_id = $1
-  AND p.status = 'ready'
-  AND p.deleted_at IS NULL
 UNION ALL
 SELECT a.bucket, a.object_key AS object_key_original
 FROM user_avatars a
