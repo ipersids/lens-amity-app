@@ -306,5 +306,6 @@ func (h *UserHandler) DeleteMyProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	middleware.ClearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }

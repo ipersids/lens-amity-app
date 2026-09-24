@@ -1,8 +1,10 @@
 import { XMarkIcon } from "@heroicons/react/24/outline";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog } from "radix-ui";
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { getApiError } from "../../../services/api";
+import usersService from "../../../services/users";
 import { useAuthStore } from "../../../stores/auth";
 
 const AccountDelete = ({ username }: { username: string }) => {
@@ -10,21 +12,34 @@ const AccountDelete = ({ username }: { username: string }) => {
   const queryClient = useQueryClient();
   const clearSession = useAuthStore((state) => state.actions.clearSession);
   const [open, setOpen] = useState<boolean>(false);
+  const [error, setError] = useState<string>("");
 
-  const deleteAccount = { isPending: false };
+  const deleteAccount = useMutation({
+    mutationFn: usersService.deleteProfile,
+    onSuccess: () => {
+      setOpen(false);
+      queryClient.clear();
+      clearSession();
+      navigate(`/users/${username}`);
+    },
+    onError: (error) => {
+      const err = getApiError(error);
+      setError(`Error: ${err.error.message} Contact us, if error will appear again.`);
+    },
+  });
 
   const handleOpenChange = (isOpen: boolean) => {
     setOpen(isOpen);
+
+    if (!isOpen) {
+      setError("");
+    }
   };
 
   const handleDeleteAccount = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
-
-    setOpen(false);
-    queryClient.clear();
-    clearSession();
-    navigate(`/users/${username}`);
+    deleteAccount.mutate();
   };
 
   return (
@@ -47,6 +62,14 @@ const AccountDelete = ({ username }: { username: string }) => {
           <Dialog.Description className="dialog-description">
             Once you delete your account, there is no going back. Please be certain.
           </Dialog.Description>
+          <p
+            className={`dialog-field-note dialog-field-note-error`}
+            id="error-delete-profile"
+            aria-live="polite"
+            hidden={error === ""}
+          >
+            {error}
+          </p>
           <div className="dialog-actions">
             <Dialog.Close asChild>
               <button className="dialog-cancel-button" type="button">
@@ -58,7 +81,7 @@ const AccountDelete = ({ username }: { username: string }) => {
                 className="dialog-save-button dialog-delete-button"
                 type="button"
                 onClick={(e) => handleDeleteAccount(e)}
-                disabled={deleteAccount.isPending}
+                disabled={deleteAccount.isPending || error !== ""}
               >
                 {deleteAccount.isPending && <span className="button-spinner" aria-hidden="true" />}
                 {deleteAccount.isPending ? "Deleting..." : "Yes, delete my account"}
