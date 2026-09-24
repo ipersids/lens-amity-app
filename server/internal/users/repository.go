@@ -184,7 +184,7 @@ func (r *usersRepository) deleteObjects(ctx context.Context, bucket string, obje
 
 	delOut, err := r.s3.Client.DeleteObjects(ctx, &input)
 	if err != nil || len(delOut.Errors) > 0 {
-		slog.Error("Error deleting objects from bucket %s.\n", bucket)
+		slog.Error("Error deleting objects from bucket ", bucket, "")
 		if err != nil {
 			var noBucket *types.NoSuchBucket
 			if errors.As(err, &noBucket) {
@@ -200,10 +200,10 @@ func (r *usersRepository) deleteObjects(ctx context.Context, bucket string, obje
 				err = s3.NewObjectNotExistsWaiter(r.s3.Client).Wait(
 					ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: delObjs.Key}, time.Minute)
 				if err != nil {
-					slog.Error("Failed attempt to wait for object %s to be deleted.\n", *delObjs.Key)
+					slog.Error("Failed attempt to wait for object ", *delObjs.Key, "to be deleted.")
 				} else {
 					// @TODO Save failed Keys to delete them later
-					slog.Error("Deleted %s.\n", *delObjs.Key)
+					slog.Error("Deleted ", *delObjs.Key, "")
 				}
 			}
 		}

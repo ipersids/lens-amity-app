@@ -301,7 +301,7 @@ func (h *UserHandler) DeleteMyProfile(w http.ResponseWriter, r *http.Request) {
 
 	err := h.userService.DeleteProfile(ctx, userID)
 	if err != nil {
-		slog.Error("%w", err)
+		slog.Error("DeleteMyProfile request failed", "error", err)
 		http.Error(w, "something went wrong", http.StatusInternalServerError)
 		return
 	}
