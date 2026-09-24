@@ -103,12 +103,17 @@ const updatePassword = async ({
   });
 };
 
+const deleteProfile = async (): Promise<void> => {
+  await internalApi.delete<void>(`${baseUsersURL}/me`);
+};
+
 const usersService = {
   getUserProfile,
   getUserPhotos,
   updateUserProfile,
   updateUsername,
   updatePassword,
+  deleteProfile,
 };
 
 export default usersService;

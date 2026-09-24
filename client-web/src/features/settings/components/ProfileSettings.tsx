@@ -49,7 +49,7 @@ const ProfileUpdate = ({ username, displayName, about, visibility }: ProfileUpda
       },
       {
         onSuccess: () => {
-          // @ODO: notify success
+          // @TODO: notify success
         },
         onError: (_error) => {
           // @TODO: notify error console.log(getApiErrorMessage(error));

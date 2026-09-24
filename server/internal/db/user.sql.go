@@ -41,6 +41,15 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 	return i, err
 }
 
+const deleteProfile = `-- name: DeleteProfile :exec
+DELETE FROM users WHERE id = $1
+`
+
+func (q *Queries) DeleteProfile(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteProfile, userID)
+	return err
+}
+
 const getPasswordHash = `-- name: GetPasswordHash :one
 SELECT id, username_key, password_hash FROM users
 WHERE id = $1
@@ -150,6 +159,41 @@ func (q *Queries) GetUserProfile(ctx context.Context, usernameKey string) (GetUs
 		&i.PhotoCount,
 	)
 	return i, err
+}
+
+const listUserAllImages = `-- name: ListUserAllImages :many
+SELECT p.bucket, p.object_key_original
+FROM photos p
+WHERE p.owner_user_id = $1
+UNION ALL
+SELECT a.bucket, a.object_key AS object_key_original
+FROM user_avatars a
+WHERE a.user_id = $1
+`
+
+type ListUserAllImagesRow struct {
+	Bucket            string
+	ObjectKeyOriginal string
+}
+
+func (q *Queries) ListUserAllImages(ctx context.Context, userID uuid.UUID) ([]ListUserAllImagesRow, error) {
+	rows, err := q.db.Query(ctx, listUserAllImages, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUserAllImagesRow
+	for rows.Next() {
+		var i ListUserAllImagesRow
+		if err := rows.Scan(&i.Bucket, &i.ObjectKeyOriginal); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listUserPhotosAfterCursor = `-- name: ListUserPhotosAfterCursor :many
