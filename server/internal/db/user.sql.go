@@ -68,6 +68,52 @@ func (q *Queries) GetPasswordHash(ctx context.Context, userID uuid.UUID) (GetPas
 	return i, err
 }
 
+const getPhotoByID = `-- name: GetPhotoByID :one
+SELECT
+  id,
+  owner_user_id,
+  bucket,
+  object_key_original,
+  title,
+  description,
+  photo_date
+FROM photos
+WHERE id = $1
+  AND owner_user_id = $2
+  AND status = 'ready'
+  AND deleted_at IS NULL
+`
+
+type GetPhotoByIDParams struct {
+	PhotoID uuid.UUID
+	UserID  uuid.UUID
+}
+
+type GetPhotoByIDRow struct {
+	ID                uuid.UUID
+	OwnerUserID       uuid.UUID
+	Bucket            string
+	ObjectKeyOriginal string
+	Title             pgtype.Text
+	Description       pgtype.Text
+	PhotoDate         pgtype.Date
+}
+
+func (q *Queries) GetPhotoByID(ctx context.Context, arg GetPhotoByIDParams) (GetPhotoByIDRow, error) {
+	row := q.db.QueryRow(ctx, getPhotoByID, arg.PhotoID, arg.UserID)
+	var i GetPhotoByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.Bucket,
+		&i.ObjectKeyOriginal,
+		&i.Title,
+		&i.Description,
+		&i.PhotoDate,
+	)
+	return i, err
+}
+
 const getUserAccessProfile = `-- name: GetUserAccessProfile :one
 SELECT id, profile_visibility
 FROM users

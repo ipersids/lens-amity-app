@@ -108,3 +108,18 @@ WHERE a.user_id = sqlc.arg(user_id);
 
 -- name: DeleteProfile :exec
 DELETE FROM users WHERE id = sqlc.arg(user_id);
+
+-- name: GetPhotoByID :one
+SELECT
+  id,
+  owner_user_id,
+  bucket,
+  object_key_original,
+  title,
+  description,
+  photo_date
+FROM photos
+WHERE id = sqlc.arg(photo_id)
+  AND owner_user_id = sqlc.arg(user_id)
+  AND status = 'ready'
+  AND deleted_at IS NULL;

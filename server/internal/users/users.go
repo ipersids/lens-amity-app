@@ -35,6 +35,7 @@ type usersStore interface {
 	deleteProfile(ctx context.Context, userID uuid.UUID) error
 	photosKeys(ctx context.Context, userID uuid.UUID) (map[string][]types.ObjectIdentifier, error)
 	deleteObjects(ctx context.Context, bucket string, objects []types.ObjectIdentifier) error
+	photoByID(ctx context.Context, p photoByIDParams) (*db.GetPhotoByIDRow, error)
 }
 
 func NewUserService(store *db.Store, s3Client *storage.Client) (*UserService, error) {
@@ -59,6 +60,8 @@ var (
 	ErrorNewUsernameTaken          = errors.New("new username is already taken")
 	ErrorFailedToDeleteSomeObjects = errors.New("failed to delete some photos")
 	ErrorFailedToDeleteProfile     = errors.New("failed to delete profile")
+	ErrorForbiddenPhotoAccess      = errors.New("can't view this content")
+	ErrorNotFoundPhotoID           = errors.New("photo not found")
 )
 
 const (
@@ -238,6 +241,61 @@ func (s *UserService) GetUserPhotos(ctx context.Context, p GetUserPhotosParams) 
 	}
 
 	return &result, nil
+}
+
+type GetUserPhotoByIDParams struct {
+	OwnerUsername string
+	ViewerID      uuid.UUID
+	PhotoID       uuid.UUID
+}
+
+type GetUserPhotoByIDResult struct {
+	Photo Photo
+}
+
+func (s *UserService) GetUserPhotoByID(ctx context.Context, p GetUserPhotoByIDParams) (*GetUserPhotoByIDResult, error) {
+	accessProfile, err := s.repo.accessProfile(ctx, profileParams{Username: p.OwnerUsername})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %w", ErrorGetUserProfile, err)
+		}
+		return nil, fmt.Errorf("get photo by id: %w", err)
+	}
+
+	if !canViewPhotos(owner{ID: accessProfile.ID, Visibility: accessProfile.ProfileVisibility}, p.ViewerID) {
+		return nil, ErrorForbiddenPhotoAccess
+	}
+
+	photoData, err := s.repo.photoByID(ctx, photoByIDParams{ownerID: accessProfile.ID, photoID: p.PhotoID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %w", ErrorNotFoundPhotoID, err)
+		}
+		return nil, fmt.Errorf("get photo by id: %w", err)
+	}
+
+	photoReq, err := s.repo.presignURL(ctx, presignURLparams{
+		Bucket:    photoData.Bucket,
+		Key:       photoData.ObjectKeyOriginal,
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &GetUserPhotoByIDResult{
+		Photo: Photo{
+			ID:          photoData.ID,
+			Title:       photoData.Title.String,
+			Description: photoData.Description.String,
+			Date:        photoData.PhotoDate.Time,
+			Request: PhotoRequest{
+				URL:     photoReq.URL,
+				Method:  photoReq.Method,
+				Header:  photoReq.SignedHeader,
+				IsReady: true,
+			},
+		}}, nil
 }
 
 type UpdateProfileParams struct {

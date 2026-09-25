@@ -114,6 +114,20 @@ func (r *usersRepository) photosPage(ctx context.Context, p photosPageParams) ([
 	return rows, nil
 }
 
+type photoByIDParams struct {
+	photoID uuid.UUID
+	ownerID uuid.UUID
+}
+
+func (r *usersRepository) photoByID(ctx context.Context, p photoByIDParams) (*db.GetPhotoByIDRow, error) {
+	row, err := r.store.Queries.GetPhotoByID(ctx, db.GetPhotoByIDParams{UserID: p.ownerID, PhotoID: p.photoID})
+	if err != nil {
+		return nil, err
+	}
+
+	return &row, nil
+}
+
 type updateProfileParams struct {
 	OwnerID     uuid.UUID
 	DisplayName string
