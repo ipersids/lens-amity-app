@@ -168,6 +168,12 @@ func (h *UserHandler) GetUserPhotos(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type GetUserPhotoByIDResponse struct {
+	Photo           users.Photo `json:"photo"`
+	PreviousPhotoID *uuid.UUID  `json:"previousPhotoID,omitempty"`
+	NextPhotoID     *uuid.UUID  `json:"nextPhotoID,omitempty"`
+}
+
 func (h *UserHandler) GetUserPhotoByID(w http.ResponseWriter, r *http.Request) {
 	ownerUsername := r.PathValue("username")
 
@@ -199,7 +205,21 @@ func (h *UserHandler) GetUserPhotoByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = json.NewEncoder(w).Encode(res.Photo)
+	body := GetUserPhotoByIDResponse{
+		Photo:           res.Photo,
+		PreviousPhotoID: nil,
+		NextPhotoID:     nil,
+	}
+
+	if res.NextPhotoID != uuid.Nil {
+		body.NextPhotoID = &res.NextPhotoID
+	}
+
+	if res.PreviousPhotoId != uuid.Nil {
+		body.PreviousPhotoID = &res.PreviousPhotoId
+	}
+
+	err = json.NewEncoder(w).Encode(body)
 	if err != nil {
 		slog.Error("UserProfile handler: failed encode response", "error", err)
 	}

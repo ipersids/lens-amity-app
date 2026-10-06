@@ -149,7 +149,7 @@ type Photo struct {
 	ID          uuid.UUID    `json:"photoID"`
 	Title       string       `json:"title"`
 	Description string       `json:"description"`
-	Date        time.Time    `json:"date"`
+	Date        string       `json:"date"`
 	Request     PhotoRequest `json:"request"`
 }
 
@@ -211,7 +211,7 @@ func (s *UserService) GetUserPhotos(ctx context.Context, p GetUserPhotosParams) 
 			ID:          photo.ID,
 			Title:       photo.Title.String,
 			Description: photo.Description.String,
-			Date:        photo.PhotoDate.Time,
+			Date:        photo.PhotoDate.Time.Format("2006-01-02"),
 			Request: PhotoRequest{
 				IsReady: false,
 			},
@@ -250,7 +250,9 @@ type GetUserPhotoByIDParams struct {
 }
 
 type GetUserPhotoByIDResult struct {
-	Photo Photo
+	Photo           Photo
+	PreviousPhotoId uuid.UUID
+	NextPhotoID     uuid.UUID
 }
 
 func (s *UserService) GetUserPhotoByID(ctx context.Context, p GetUserPhotoByIDParams) (*GetUserPhotoByIDResult, error) {
@@ -288,14 +290,17 @@ func (s *UserService) GetUserPhotoByID(ctx context.Context, p GetUserPhotoByIDPa
 			ID:          photoData.ID,
 			Title:       photoData.Title.String,
 			Description: photoData.Description.String,
-			Date:        photoData.PhotoDate.Time,
+			Date:        photoData.PhotoDate.Time.Format("2006-01-02"),
 			Request: PhotoRequest{
 				URL:     photoReq.URL,
 				Method:  photoReq.Method,
 				Header:  photoReq.SignedHeader,
 				IsReady: true,
 			},
-		}}, nil
+		},
+		PreviousPhotoId: photoData.PreviousPhotoID,
+		NextPhotoID:     photoData.NextPhotoID,
+	}, nil
 }
 
 type UpdateProfileParams struct {
