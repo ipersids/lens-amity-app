@@ -1,4 +1,5 @@
 export const ProfilePhotosQueryKey = (username: string) => ["photos", username];
+export const PhotoIDQueryKey = (username: string, photoID: string) => ["photos", username, photoID];
 export const ProfileQueryKey = (username: string) => ["profile", username];
 
 export const USERNAME_REGEX = /^[A-Za-z0-9_-]+$/;
