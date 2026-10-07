@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { ProfilePhotosQueryKey } from "../../../constants";
 import type { Photo } from "../../../services/users";
 import usersService from "../../../services/users";
+import { formatPhotoDate } from "../../../utils";
 
 type ProfilePhotosProps = {
   username: string;
@@ -26,7 +27,7 @@ const PhotosFeed = ({ photos, username }: { photos: Photo[]; username: string })
           >
             <img src={photo.request.url} alt={photo.title} />
             <span className="profile-photo-name">{photo.title}</span>
-            <time dateTime={photo.date}>{photo.date}</time>
+            <time dateTime={photo.date}>{formatPhotoDate(photo.date)}</time>
           </Link>
         </li>
       ))}
