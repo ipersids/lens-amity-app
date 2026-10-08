@@ -42,6 +42,7 @@ func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware fun
 	// 3. Strict Session Protected routes
 	mux.HandleFunc("PUT /api/photos/upload", authRequiredMiddleware(h.photo.UploadIntent))
 	mux.HandleFunc("PUT /api/photos/{id}/complete", authRequiredMiddleware(h.photo.UploadComplete))
+	mux.HandleFunc("DELETE /api/photos/{id}", authRequiredMiddleware(h.photo.Delete))
 
 	mux.Handle("DELETE /api/users/me", authRequiredMiddleware(h.user.DeleteMyProfile))
 	mux.Handle("PUT /api/users/me/profile", authRequiredMiddleware(h.user.UpdateMyProfile))

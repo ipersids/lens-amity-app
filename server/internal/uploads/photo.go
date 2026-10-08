@@ -11,6 +11,7 @@ import (
 
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 var (
@@ -24,6 +25,7 @@ var (
 	ErrUploadSizeMismatch    = errors.New("uploaded object size mismatch")
 	ErrPhotoAlreadyExists    = errors.New("photo already exists for date")
 	ErrDateOutOfRange        = errors.New("date must be within the last 7 days including today")
+	ErrUnauthorized          = errors.New("unauthorized")
 )
 
 const maxImageBytes int64 = 10 * 1024 * 1024
@@ -41,6 +43,7 @@ type photoStore interface {
 	failPendingPhotoUpload(ctx context.Context, p failPendingPhotoUploadParams) error
 	headObject(ctx context.Context, bucket string, key string) (*objectHeadData, error)
 	deleteObject(ctx context.Context, bucket string, key string) error
+	deletePhotoRecord(ctx context.Context, p deletePhotoRecordParams) error
 }
 
 func NewPhotoService(store *db.Store, s3Client *storage.Client) (*PhotoService, error) {
@@ -199,6 +202,22 @@ func (ps *PhotoService) UploadPhotoComplete(ctx context.Context, p UploadPhotoCo
 		ObjectKeyProcessed: []byte("{}"),
 	}); err != nil {
 		return fmt.Errorf("%w: complete photo upload: mark ready: %w", ErrInternal, err)
+	}
+
+	return nil
+}
+
+type DeletePhotoParams struct {
+	OwnerID uuid.UUID
+	PhotoID uuid.UUID
+}
+
+func (ps *PhotoService) DeletePhoto(ctx context.Context, p DeletePhotoParams) error {
+	if err := ps.repo.deletePhotoRecord(ctx, deletePhotoRecordParams{PhotoID: p.PhotoID, OwnerUserID: p.OwnerID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrPhotoNotFound
+		}
+		return err
 	}
 
 	return nil
