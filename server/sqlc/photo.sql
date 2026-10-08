@@ -61,14 +61,13 @@ WHERE id = sqlc.arg(id)
   AND status = 'processing'
 RETURNING id;
 
--- -- name: MarkPhotoUploadRecordDeleted :one
--- UPDATE photos
---   SET status = 'deleted',
---       deleted_at = now()
--- WHERE id = sqlc.arg(id)
---   AND owner_user_id = sqlc.arg(owner_user_id)
---   AND status != 'deleted'
--- RETURNING id;
+-- name: MarkPhotoRecordDeleted :one
+UPDATE photos
+  SET status = 'deleted',
+      deleted_at = now()
+WHERE id = sqlc.arg(photo_id)
+  AND owner_user_id = sqlc.arg(owner_user_id)
+RETURNING id, bucket, object_key_original;
 
 -- -- name: LockExpiredPendingPhotoUploads :many
 -- SELECT id, bucket, object_key_original

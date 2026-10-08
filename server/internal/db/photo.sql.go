@@ -68,6 +68,33 @@ func (q *Queries) CreatePendingPhotoUploadRecord(ctx context.Context, arg Create
 	return err
 }
 
+const markPhotoRecordDeleted = `-- name: MarkPhotoRecordDeleted :one
+UPDATE photos
+  SET status = 'deleted',
+      deleted_at = now()
+WHERE id = $1
+  AND owner_user_id = $2
+RETURNING id, bucket, object_key_original
+`
+
+type MarkPhotoRecordDeletedParams struct {
+	PhotoID     uuid.UUID
+	OwnerUserID uuid.UUID
+}
+
+type MarkPhotoRecordDeletedRow struct {
+	ID                uuid.UUID
+	Bucket            string
+	ObjectKeyOriginal string
+}
+
+func (q *Queries) MarkPhotoRecordDeleted(ctx context.Context, arg MarkPhotoRecordDeletedParams) (MarkPhotoRecordDeletedRow, error) {
+	row := q.db.QueryRow(ctx, markPhotoRecordDeleted, arg.PhotoID, arg.OwnerUserID)
+	var i MarkPhotoRecordDeletedRow
+	err := row.Scan(&i.ID, &i.Bucket, &i.ObjectKeyOriginal)
+	return i, err
+}
+
 const markPhotoUploadRecordProcessing = `-- name: MarkPhotoUploadRecordProcessing :one
 UPDATE photos
   SET status = 'processing'
