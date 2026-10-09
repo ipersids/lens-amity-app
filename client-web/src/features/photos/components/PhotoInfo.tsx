@@ -1,6 +1,5 @@
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
-import { Link, useNavigate } from "react-router";
-import useDeletePhoto from "../../../hooks/useDeletePhoto";
+import { Link } from "react-router";
 import usePhotoID from "../../../hooks/usePhotoID";
 import { formatPhotoDate } from "../../../utils";
 import { ProfileNotAvailable } from "../../profile";
@@ -23,8 +22,6 @@ type PhotoInfoParams = {
 
 const PhotoInfo = ({ profile, photoID }: PhotoInfoParams) => {
   const { isPending, isError, data } = usePhotoID(profile.username, photoID);
-  const deletePhoto = useDeletePhoto();
-  const navigate = useNavigate();
 
   if (isError) {
     return <ProfileNotAvailable />;
@@ -34,24 +31,6 @@ const PhotoInfo = ({ profile, photoID }: PhotoInfoParams) => {
     return null;
   }
 
-  const handleDeleteClick = () => {
-    if (deletePhoto.isPending) return;
-
-    deletePhoto.mutate(photoID, {
-      onSuccess: () => {
-        if (data.previousPhotoID) {
-          return navigate(`/users/${profile.username}/photos/${data.previousPhotoID}`);
-        }
-
-        if (data.nextPhotoID) {
-          return navigate(`/users/${profile.username}/photos/${data.nextPhotoID}`);
-        }
-
-        return navigate(`/users/${profile.username}`);
-      },
-    });
-  };
-
   return (
     <article className="photo-info" data-photo-id={data.photo.photoID}>
       <header className="photo-info-header">
@@ -60,7 +39,14 @@ const PhotoInfo = ({ profile, photoID }: PhotoInfoParams) => {
           Back to profile
         </Link>
 
-        {profile.canEdit && <PhotoDelete onDelete={handleDeleteClick} />}
+        {profile.canEdit && (
+          <PhotoDelete
+            username={profile.username}
+            currentPhotoID={photoID}
+            previousPhotoID={data.previousPhotoID}
+            nextPhotoID={data.nextPhotoID}
+          />
+        )}
       </header>
 
       <div className="photo-info-card">
