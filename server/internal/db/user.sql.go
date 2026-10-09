@@ -68,6 +68,83 @@ func (q *Queries) GetPasswordHash(ctx context.Context, userID uuid.UUID) (GetPas
 	return i, err
 }
 
+const getPhotoByID = `-- name: GetPhotoByID :one
+WITH current_photo AS (
+  SELECT
+    p.id,
+    p.owner_user_id,
+    p.bucket,
+    p.object_key_original,
+    p.title,
+    p.description,
+    p.photo_date
+  FROM photos AS p
+  WHERE p.id = $2
+    AND p.owner_user_id = $1
+    AND p.status = 'ready'
+    AND p.deleted_at IS NULL
+)
+SELECT
+  current_photo.id, current_photo.owner_user_id, current_photo.bucket, current_photo.object_key_original, current_photo.title, current_photo.description, current_photo.photo_date,
+
+  (
+    SELECT p.id
+    FROM photos p
+    WHERE p.owner_user_id = $1
+      AND p.status = 'ready'
+      AND p.deleted_at IS NULL
+      AND (p.photo_date, p.id) > (current_photo.photo_date, current_photo.id)
+    ORDER BY p.photo_date ASC, p.id ASC
+    LIMIT 1
+  ) AS previous_photo_id,
+
+  (
+    SELECT p.id
+    FROM photos p
+    WHERE p.owner_user_id = $1
+      AND p.status = 'ready'
+      AND p.deleted_at IS NULL
+      AND (p.photo_date, p.id) < (current_photo.photo_date, current_photo.id)
+    ORDER BY p.photo_date DESC, p.id DESC
+    LIMIT 1
+  ) AS next_photo_id
+FROM current_photo
+`
+
+type GetPhotoByIDParams struct {
+	UserID  uuid.UUID
+	PhotoID uuid.UUID
+}
+
+type GetPhotoByIDRow struct {
+	ID                uuid.UUID
+	OwnerUserID       uuid.UUID
+	Bucket            string
+	ObjectKeyOriginal string
+	Title             pgtype.Text
+	Description       pgtype.Text
+	PhotoDate         pgtype.Date
+	PreviousPhotoID   uuid.UUID
+	NextPhotoID       uuid.UUID
+}
+
+func (q *Queries) GetPhotoByID(ctx context.Context, arg GetPhotoByIDParams) (GetPhotoByIDRow, error) {
+	row := q.db.QueryRow(ctx, getPhotoByID, arg.UserID, arg.PhotoID)
+	var i GetPhotoByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.Bucket,
+		&i.ObjectKeyOriginal,
+		&i.Title,
+		&i.Description,
+		&i.PhotoDate,
+		&i.PreviousPhotoID,
+		&i.NextPhotoID,
+	)
+	return i, err
+}
+
 const getUserAccessProfile = `-- name: GetUserAccessProfile :one
 SELECT id, profile_visibility
 FROM users

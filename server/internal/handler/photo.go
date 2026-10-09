@@ -18,6 +18,7 @@ import (
 type photoService interface {
 	UploadPhotoIntent(ctx context.Context, p uploads.UploadPhotoIntentParams) (*uploads.UploadPhotoIntentResult, error)
 	UploadPhotoComplete(ctx context.Context, p uploads.UploadPhotoCompleteParams) error
+	DeletePhoto(ctx context.Context, p uploads.DeletePhotoParams) error
 }
 
 type PhotoHandler struct {
@@ -173,6 +174,36 @@ func (ph *PhotoHandler) UploadComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (ph *PhotoHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	id := r.PathValue("id")
+	photoID, err := uuid.Parse(id)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "malformed_id", "malformed ID")
+		return
+	}
+
+	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := ph.photoService.DeletePhoto(ctx, uploads.DeletePhotoParams{OwnerID: userID, PhotoID: photoID}); err != nil {
+		if errors.Is(err, uploads.ErrPhotoNotFound) {
+			WriteError(w, http.StatusNotFound, "photo_not_found", "photo not found")
+			return
+		}
+		WriteError(w, http.StatusInternalServerError, "internal_server_error", "something went wrong")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func statusForPhotoError(err error) int {

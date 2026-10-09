@@ -229,3 +229,33 @@ func (r *uploadRepository) failPendingPhotoUpload(ctx context.Context, p failPen
 	}
 	return nil
 }
+
+type deletePhotoRecordParams struct {
+	PhotoID     uuid.UUID
+	OwnerUserID uuid.UUID
+}
+
+func (r *uploadRepository) deletePhotoRecord(ctx context.Context, p deletePhotoRecordParams) error {
+	tx, err := r.store.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	q := r.store.Queries.WithTx(tx)
+
+	row, err := q.MarkPhotoRecordDeleted(ctx, db.MarkPhotoRecordDeletedParams{PhotoID: p.PhotoID, OwnerUserID: p.OwnerUserID})
+	if err != nil {
+		return err
+	}
+
+	if err := r.deleteObject(ctx, row.Bucket, row.ObjectKeyOriginal); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}

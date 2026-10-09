@@ -56,6 +56,10 @@ const upload = async (photoInfo: UploadIntentItem, file: File): Promise<void> =>
   await completeUpload(photoIntentData.photoID);
 };
 
-const photoService = { upload };
+const deletePhoto = async (photoID: string): Promise<void> => {
+  await internalApi.delete(`${basePhotoURI}/${photoID}`);
+};
+
+const photoService = { upload, deletePhoto };
 
 export default photoService;

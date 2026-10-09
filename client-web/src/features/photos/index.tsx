@@ -1,3 +1,4 @@
-import PhotosFeed from "./components/PhotosFeed";
+import PhotoInfo from "./components/PhotoInfo";
+import PhotoShell from "./components/PhotoShell";
 
-export { PhotosFeed };
+export { PhotoInfo, PhotoShell };

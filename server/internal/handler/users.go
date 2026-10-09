@@ -168,6 +168,72 @@ func (h *UserHandler) GetUserPhotos(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type GetUserPhotoByIDResponse struct {
+	Photo           users.Photo `json:"photo"`
+	PreviousPhotoID *uuid.UUID  `json:"previousPhotoID,omitempty"`
+	NextPhotoID     *uuid.UUID  `json:"nextPhotoID,omitempty"`
+}
+
+func (h *UserHandler) GetUserPhotoByID(w http.ResponseWriter, r *http.Request) {
+	ownerUsername := r.PathValue("username")
+
+	id := r.PathValue("id")
+	photoID, err := uuid.Parse(id)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "malformed_id", "malformed ID")
+		return
+	}
+
+	viewerID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	res, err := h.userService.GetUserPhotoByID(ctx, users.GetUserPhotoByIDParams{
+		OwnerUsername: ownerUsername,
+		ViewerID:      viewerID,
+		PhotoID:       photoID,
+	})
+	if err != nil {
+		slog.Error("GetUserPhotos: request failed", "error", err)
+		if errors.Is(err, users.ErrorForbiddenPhotoAccess) {
+			http.Error(w, "private/unavailable to view", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, users.ErrorNotFoundPhotoID) {
+			http.Error(w, "not found photo", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	body := GetUserPhotoByIDResponse{
+		Photo:           res.Photo,
+		PreviousPhotoID: nil,
+		NextPhotoID:     nil,
+	}
+
+	if res.NextPhotoID != uuid.Nil {
+		body.NextPhotoID = &res.NextPhotoID
+	}
+
+	if res.PreviousPhotoId != uuid.Nil {
+		body.PreviousPhotoID = &res.PreviousPhotoId
+	}
+
+	err = json.NewEncoder(w).Encode(body)
+	if err != nil {
+		slog.Error("UserProfile handler: failed encode response", "error", err)
+	}
+
+}
+
 type UpdateMyProfileRequest struct {
 	DisplayName string `json:"displayName"`
 	About       string `json:"about"`

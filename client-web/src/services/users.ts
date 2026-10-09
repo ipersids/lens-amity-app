@@ -59,6 +59,20 @@ const getUserPhotos = async (
   return data;
 };
 
+type PhotoByIDResponse = {
+  photo: Photo;
+  nextPhotoID?: string;
+  previousPhotoID?: string;
+};
+
+const getPhotoByID = async (username: string, photoID: string): Promise<PhotoByIDResponse> => {
+  const { data } = await internalApi.get<PhotoByIDResponse>(
+    `${baseUsersURL}/${username}/photos/${photoID}`,
+  );
+
+  return data;
+};
+
 export type UpdateProfileProps = {
   displayName: string;
   about?: string;
@@ -110,6 +124,7 @@ const deleteProfile = async (): Promise<void> => {
 const usersService = {
   getUserProfile,
   getUserPhotos,
+  getPhotoByID,
   updateUserProfile,
   updateUsername,
   updatePassword,

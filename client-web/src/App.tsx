@@ -4,6 +4,7 @@ import { AccountSettings, ProfileSettings } from "./features/settings";
 import AddPhotoPage from "./pages/AddPhotoPage";
 import AuthPage from "./pages/AuthPage";
 import MyProfilePageRedirect from "./pages/MyProfilePageRedirect";
+import PhotoPage from "./pages/PhotoPage";
 import ProfilePage from "./pages/ProfilePage";
 import ProtectedPage from "./pages/ProtectedPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -28,6 +29,7 @@ function App() {
           </Route>
 
           <Route path="/users/:username" element={<ProfilePage />} />
+          <Route path="/users/:username/photos/:photoID" element={<PhotoPage />} />
         </Route>
       </Routes>
     </div>

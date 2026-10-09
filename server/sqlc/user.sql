@@ -108,3 +108,45 @@ WHERE a.user_id = sqlc.arg(user_id);
 
 -- name: DeleteProfile :exec
 DELETE FROM users WHERE id = sqlc.arg(user_id);
+
+-- name: GetPhotoByID :one
+WITH current_photo AS (
+  SELECT
+    p.id,
+    p.owner_user_id,
+    p.bucket,
+    p.object_key_original,
+    p.title,
+    p.description,
+    p.photo_date
+  FROM photos AS p
+  WHERE p.id = sqlc.arg(photo_id)
+    AND p.owner_user_id = sqlc.arg(user_id)
+    AND p.status = 'ready'
+    AND p.deleted_at IS NULL
+)
+SELECT
+  current_photo.*,
+
+  (
+    SELECT p.id
+    FROM photos p
+    WHERE p.owner_user_id = sqlc.arg(user_id)
+      AND p.status = 'ready'
+      AND p.deleted_at IS NULL
+      AND (p.photo_date, p.id) > (current_photo.photo_date, current_photo.id)
+    ORDER BY p.photo_date ASC, p.id ASC
+    LIMIT 1
+  ) AS previous_photo_id,
+
+  (
+    SELECT p.id
+    FROM photos p
+    WHERE p.owner_user_id = sqlc.arg(user_id)
+      AND p.status = 'ready'
+      AND p.deleted_at IS NULL
+      AND (p.photo_date, p.id) < (current_photo.photo_date, current_photo.id)
+    ORDER BY p.photo_date DESC, p.id DESC
+    LIMIT 1
+  ) AS next_photo_id
+FROM current_photo;
