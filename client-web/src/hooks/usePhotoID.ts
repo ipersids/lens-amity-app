@@ -8,6 +8,7 @@ const usePhotoID = (username?: string, photoID?: string) =>
     queryFn: () => usersService.getPhotoByID(username ?? "", photoID ?? ""),
     enabled: !!username && !!photoID,
     staleTime: 60_000,
+    retry: false,
   });
 
 export default usePhotoID;

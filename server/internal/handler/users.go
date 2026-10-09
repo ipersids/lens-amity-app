@@ -201,6 +201,14 @@ func (h *UserHandler) GetUserPhotoByID(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		slog.Error("GetUserPhotos: request failed", "error", err)
+		if errors.Is(err, users.ErrorForbiddenPhotoAccess) {
+			http.Error(w, "private/unavailable to view", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, users.ErrorNotFoundPhotoID) {
+			http.Error(w, "not found photo", http.StatusNotFound)
+			return
+		}
 		http.Error(w, "something went wrong", http.StatusInternalServerError)
 		return
 	}

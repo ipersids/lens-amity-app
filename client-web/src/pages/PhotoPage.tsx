@@ -7,12 +7,10 @@ const PhotoPage = () => {
   const { photoID } = useParams<{ photoID: string }>();
   const { isPending, isError, data: user } = useProfile(username);
 
-  if (!username || !photoID || isError) {
-    return <ProfileNotAvailable />;
-  }
+  if (isPending || !user) return null;
 
-  if (isPending || !user) {
-    return null;
+  if (!username || !photoID || isError || !user.canViewPhotos) {
+    return <ProfileNotAvailable />;
   }
 
   return (
