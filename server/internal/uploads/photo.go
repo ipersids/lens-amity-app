@@ -10,6 +10,7 @@ import (
 	"time"
 
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -36,7 +37,7 @@ type PhotoService struct {
 }
 
 type photoStore interface {
-	presignPutObject(ctx context.Context, p presignPutObjectParams) (*v4.PresignedHTTPRequest, error)
+	presignPostObject(ctx context.Context, p presignPutObjectParams) (*s3.PresignedPostRequest, error)
 	createPendingPhotoUpload(ctx context.Context, p createPendingPhotoUploadParams) error
 	pendingPhotoUpload(ctx context.Context, p pendingPhotoUploadParams) (*pendingPhotoUploadData, error)
 	completePendingPhotoUpload(ctx context.Context, p completePendingPhotoUploadParams) error
@@ -72,7 +73,7 @@ type UploadPhotoIntentParams struct {
 }
 
 type UploadPhotoIntentResult struct {
-	PresignedRequest *v4.PresignedHTTPRequest
+	PresignedRequest *s3.PresignedPostRequest
 	PhotoID          uuid.UUID
 }
 
@@ -100,7 +101,7 @@ func (ps *PhotoService) UploadPhotoIntent(ctx context.Context, p UploadPhotoInte
 	)
 	expiresAt := ps.now().UTC().Add(10 * time.Minute)
 
-	req, err := ps.repo.presignPutObject(ctx, presignPutObjectParams{
+	req, err := ps.repo.presignPostObject(ctx, presignPutObjectParams{
 		Key:         key,
 		ContentType: validated.ContentType,
 		ExpiresAt:   expiresAt,
@@ -220,6 +221,19 @@ func (ps *PhotoService) DeletePhoto(ctx context.Context, p DeletePhotoParams) er
 		return err
 	}
 
+	return nil
+}
+
+type UploadAvatarIntentParams struct {
+	OwnerUserID uuid.UUID
+	ContentType string
+}
+
+func (ps *PhotoService) UploadAvatarIntent(ctx context.Context, p UploadAvatarIntentParams) (*v4.PresignedHTTPRequest, error) {
+	return nil, nil
+}
+
+func (ps *PhotoService) UploadAvatarComplete(ctx context.Context, userID uuid.UUID) error {
 	return nil
 }
 

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -42,16 +41,19 @@ type presignPutObjectParams struct {
 	ExpiresAt   time.Time
 }
 
-func (r *uploadRepository) presignPutObject(ctx context.Context, p presignPutObjectParams) (*v4.PresignedHTTPRequest, error) {
-	req, err := r.s3.Presign.PresignPutObject(
+func (r *uploadRepository) presignPostObject(ctx context.Context, p presignPutObjectParams) (*s3.PresignedPostRequest, error) {
+	req, err := r.s3.Presign.PresignPostObject(
 		ctx,
 		&s3.PutObjectInput{
 			Bucket:      aws.String(r.s3.Bucket),
 			Key:         aws.String(p.Key),
 			ContentType: aws.String(p.ContentType),
 		},
-		func(options *s3.PresignOptions) {
+		func(options *s3.PresignPostOptions) {
 			options.Expires = time.Until(p.ExpiresAt)
+			options.Conditions = []any{
+				[]any{"content-length-range", 1, maxImageBytes},
+			}
 		})
 	if err != nil {
 		return nil, fmt.Errorf("presign put object: %w", err)

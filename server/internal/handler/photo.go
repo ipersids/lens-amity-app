@@ -19,6 +19,8 @@ type photoService interface {
 	UploadPhotoIntent(ctx context.Context, p uploads.UploadPhotoIntentParams) (*uploads.UploadPhotoIntentResult, error)
 	UploadPhotoComplete(ctx context.Context, p uploads.UploadPhotoCompleteParams) error
 	DeletePhoto(ctx context.Context, p uploads.DeletePhotoParams) error
+	// UploadAvatarIntent(ctx context.Context, p uploads.UploadAvatarIntentParams) (*v4.PresignedHTTPRequest, error)
+	// UploadAvatarComplete(ctx context.Context, userID uuid.UUID) error
 }
 
 type PhotoHandler struct {
@@ -48,10 +50,10 @@ type UploadIntentRequest struct {
 }
 
 type UploadResponseBody struct {
-	PhotoID uuid.UUID   `json:"photoID"`
-	URL     string      `json:"url"`
-	Method  string      `json:"method"`
-	Header  http.Header `json:"header"`
+	PhotoID uuid.UUID         `json:"photoID"`
+	URL     string            `json:"url"`
+	Method  string            `json:"method"`
+	Values  map[string]string `json:"formDataValues"`
 }
 
 func (ph *PhotoHandler) UploadIntent(w http.ResponseWriter, r *http.Request) {
@@ -125,9 +127,9 @@ func (ph *PhotoHandler) UploadIntent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(UploadResponseBody{
 		URL:     res.PresignedRequest.URL,
-		Method:  res.PresignedRequest.Method,
-		Header:  res.PresignedRequest.SignedHeader,
+		Method:  "POST",
 		PhotoID: res.PhotoID,
+		Values:  res.PresignedRequest.Values,
 	})
 
 	if err != nil {
@@ -205,6 +207,25 @@ func (ph *PhotoHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// type UploadAvatarIntentRequest struct {
+// 	ContentType string `json:"contentType"`
+// 	Size        int64  `json:"size"`
+// }
+
+// type UploadAvatarResponseBody struct {
+// 	URL    string      `json:"url"`
+// 	Method string      `json:"method"`
+// 	Header http.Header `json:"header"`
+// }
+
+// func (ph *PhotoHandler) UploadAvatarIntent(w http.ResponseWriter, r *http.Request) {
+
+// }
+
+// func (ph *PhotoHandler) UploadAvatarComplete(w http.ResponseWriter, r *http.Request) {
+
+// }
 
 func statusForPhotoError(err error) int {
 	if errors.Is(err, context.DeadlineExceeded) {
