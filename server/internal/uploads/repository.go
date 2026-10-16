@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -38,6 +39,7 @@ func newUploadRepository(store *db.Store, s3 *storage.Client) (*uploadRepository
 type presignPutObjectParams struct {
 	Key         string
 	ContentType string
+	MaxSize     int64
 	ExpiresAt   time.Time
 }
 
@@ -52,7 +54,7 @@ func (r *uploadRepository) presignPostObject(ctx context.Context, p presignPutOb
 		func(options *s3.PresignPostOptions) {
 			options.Expires = time.Until(p.ExpiresAt)
 			options.Conditions = []any{
-				[]any{"content-length-range", 1, maxImageBytes},
+				[]any{"content-length-range", 1, p.MaxSize},
 			}
 		})
 	if err != nil {
@@ -142,6 +144,128 @@ func (r *uploadRepository) createPendingPhotoUpload(ctx context.Context, p creat
 		return fmt.Errorf("createPendingPhotoUpload: %w", err)
 	}
 	return nil
+}
+
+type createPendingAvatarUploadParams struct {
+	ID          uuid.UUID
+	OwnerUserID uuid.UUID
+	Key         string
+	ContentType string
+	Size        int64
+	ExpiresAt   time.Time
+}
+
+func (r *uploadRepository) createPendingAvatarUpload(ctx context.Context, p createPendingAvatarUploadParams) error {
+	err := r.store.Queries.CreatePendingAvatarUpload(ctx, db.CreatePendingAvatarUploadParams{
+		ID:          p.ID,
+		UserID:      p.OwnerUserID,
+		Bucket:      r.s3.Bucket,
+		ObjectKey:   p.Key,
+		ContentType: p.ContentType,
+		Size:        p.Size,
+		ExpiresAt:   p.ExpiresAt,
+	})
+	if err != nil {
+		return fmt.Errorf("create pending avatar upload: %w", err)
+	}
+	return nil
+}
+
+type pendingAvatarUploadParams struct {
+	ID          uuid.UUID
+	OwnerUserID uuid.UUID
+}
+
+type pendingAvatarUploadData struct {
+	ID          uuid.UUID
+	OwnerUserID uuid.UUID
+	Bucket      string
+	Key         string
+	ContentType string
+	Size        int64
+}
+
+func (r *uploadRepository) pendingAvatarUpload(ctx context.Context, p pendingAvatarUploadParams) (*pendingAvatarUploadData, error) {
+	row, err := r.store.Queries.MarkAvatarUploadProcessing(ctx, db.MarkAvatarUploadProcessingParams{
+		ID:     p.ID,
+		UserID: p.OwnerUserID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mark avatar upload processing: %w", err)
+	}
+
+	return &pendingAvatarUploadData{
+		ID:          row.ID,
+		OwnerUserID: row.UserID,
+		Bucket:      row.Bucket,
+		Key:         row.ObjectKey,
+		ContentType: row.ContentType,
+		Size:        row.Size,
+	}, nil
+}
+
+func (r *uploadRepository) avatarUploadStatus(ctx context.Context, p pendingAvatarUploadParams) (string, error) {
+	status, err := r.store.Queries.GetAvatarUploadStatus(ctx, db.GetAvatarUploadStatusParams{ID: p.ID, UserID: p.OwnerUserID})
+	if err != nil {
+		return "", fmt.Errorf("get avatar upload status: %w", err)
+	}
+	return status, nil
+}
+
+type failPendingAvatarUploadParams struct {
+	ID          uuid.UUID
+	OwnerUserID uuid.UUID
+	Reason      string
+}
+
+func (r *uploadRepository) failPendingAvatarUpload(ctx context.Context, p failPendingAvatarUploadParams) error {
+	err := r.store.Queries.MarkAvatarUploadFailed(ctx, db.MarkAvatarUploadFailedParams{
+		ID:     p.ID,
+		UserID: p.OwnerUserID,
+		FailureReason: pgtype.Text{
+			String: p.Reason,
+			Valid:  true,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("mark avatar upload failed: %w", err)
+	}
+	return nil
+}
+
+func (r *uploadRepository) promoteAvatarUpload(ctx context.Context, p pendingAvatarUploadData) (*db.UserAvatar, error) {
+	tx, err := r.store.Pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin avatar promotion: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	q := r.store.Queries.WithTx(tx)
+	previous, err := q.GetCurrentAvatarForUpdate(ctx, p.OwnerUserID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("lock current avatar: %w", err)
+	}
+
+	if err := q.MarkAvatarUploadReady(ctx, db.MarkAvatarUploadReadyParams{ID: p.ID, UserID: p.OwnerUserID}); err != nil {
+		return nil, fmt.Errorf("mark avatar upload ready: %w", err)
+	}
+	if err := q.UpsertCurrentAvatar(ctx, db.UpsertCurrentAvatarParams{
+		UserID:      p.OwnerUserID,
+		Bucket:      p.Bucket,
+		ObjectKey:   p.Key,
+		ContentType: p.ContentType,
+		Size:        p.Size,
+	}); err != nil {
+		return nil, fmt.Errorf("set current avatar: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit avatar promotion: %w", err)
+	}
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return &previous, nil
 }
 
 type pendingPhotoUploadParams struct {

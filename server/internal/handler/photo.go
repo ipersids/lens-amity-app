@@ -19,8 +19,8 @@ type photoService interface {
 	UploadPhotoIntent(ctx context.Context, p uploads.UploadPhotoIntentParams) (*uploads.UploadPhotoIntentResult, error)
 	UploadPhotoComplete(ctx context.Context, p uploads.UploadPhotoCompleteParams) error
 	DeletePhoto(ctx context.Context, p uploads.DeletePhotoParams) error
-	// UploadAvatarIntent(ctx context.Context, p uploads.UploadAvatarIntentParams) (*v4.PresignedHTTPRequest, error)
-	// UploadAvatarComplete(ctx context.Context, userID uuid.UUID) error
+	UploadAvatarIntent(ctx context.Context, p uploads.UploadAvatarIntentParams) (*uploads.UploadAvatarIntentResult, error)
+	UploadAvatarComplete(ctx context.Context, p uploads.UploadAvatarCompleteParams) error
 }
 
 type PhotoHandler struct {
@@ -109,6 +109,10 @@ func (ph *PhotoHandler) UploadIntent(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, uploads.ErrUnsupportedFileType) {
 			WriteError(w, http.StatusBadRequest, "unsupported_file_type", "unsupported file type")
+			return
+		}
+		if errors.Is(err, uploads.ErrFileTooLarge) {
+			WriteError(w, http.StatusRequestEntityTooLarge, "file_too_large", "file must be 10 MB or smaller")
 			return
 		}
 		if errors.Is(err, uploads.ErrDateOutOfRange) {
@@ -208,24 +212,125 @@ func (ph *PhotoHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// type UploadAvatarIntentRequest struct {
-// 	ContentType string `json:"contentType"`
-// 	Size        int64  `json:"size"`
-// }
+type UploadAvatarIntentRequest struct {
+	ContentType string `json:"contentType"`
+	Size        int64  `json:"size"`
+}
 
-// type UploadAvatarResponseBody struct {
-// 	URL    string      `json:"url"`
-// 	Method string      `json:"method"`
-// 	Header http.Header `json:"header"`
-// }
+type UploadAvatarResponseBody struct {
+	UploadID uuid.UUID         `json:"uploadID"`
+	URL      string            `json:"url"`
+	Method   string            `json:"method"`
+	Values   map[string]string `json:"formDataValues"`
+}
 
-// func (ph *PhotoHandler) UploadAvatarIntent(w http.ResponseWriter, r *http.Request) {
+func (ph *PhotoHandler) UploadAvatarIntent(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
+	ctx := r.Context()
 
-// }
+	userID, ok := ctx.Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, http.StatusText(http.StatusUnauthorized), "Unauthorized")
+		return
+	}
 
-// func (ph *PhotoHandler) UploadAvatarComplete(w http.ResponseWriter, r *http.Request) {
+	var req UploadAvatarIntentRequest
 
-// }
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed JSON")
+		return
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		WriteError(w, http.StatusBadRequest, "malformed_json", "malformed JSON")
+		return
+	}
+
+	if req.ContentType == "" {
+		WriteError(w, http.StatusBadRequest, "invalid_upload_intent", "content_type field is required")
+		return
+	}
+
+	if req.Size <= 0 {
+		WriteError(w, http.StatusBadRequest, "invalid_upload_intent", "size is negative or zero")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	res, err := ph.photoService.UploadAvatarIntent(ctx, uploads.UploadAvatarIntentParams{
+		OwnerUserID: userID,
+		ContentType: req.ContentType,
+		Size:        req.Size,
+	})
+	if err != nil {
+		if errors.Is(err, uploads.ErrUnsupportedFileType) {
+			WriteError(w, http.StatusBadRequest, "unsupported_file_type", "unsupported file type")
+			return
+		}
+		if errors.Is(err, uploads.ErrFileTooLarge) {
+			WriteError(w, http.StatusRequestEntityTooLarge, "file_too_large", "avatar must be 1 MB or smaller")
+			return
+		}
+		slog.Error("UploadIntent: request failed", "error", err)
+		WriteError(w, statusForPhotoError(err), "internal_error", "something went wrong")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(UploadAvatarResponseBody{
+		UploadID: res.UploadID,
+		URL:      res.PresignedRequest.URL,
+		Method:   "POST",
+		Values:   res.PresignedRequest.Values,
+	})
+
+	if err != nil {
+		slog.Error("UploadIntent: failed encode response", "error", err)
+	}
+}
+
+func (ph *PhotoHandler) UploadAvatarComplete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	uploadID, err := uuid.Parse(id)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "malformed_id", "malformed upload ID")
+		return
+	}
+
+	ctx := r.Context()
+
+	userID, ok := ctx.Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, http.StatusText(http.StatusUnauthorized), "Unauthorized")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := ph.photoService.UploadAvatarComplete(ctx, uploads.UploadAvatarCompleteParams{ID: uploadID, OwnerUserID: userID}); err != nil {
+		switch {
+		case errors.Is(err, uploads.ErrUnsupportedFileType):
+			WriteError(w, http.StatusUnsupportedMediaType, "unsupported_file_type", "unsupported file type")
+		case errors.Is(err, uploads.ErrFileTooLarge):
+			WriteError(w, http.StatusRequestEntityTooLarge, "file_too_large", "avatar must be 1 MB or smaller")
+		case errors.Is(err, uploads.ErrAvatarUploadNotFound):
+			WriteError(w, http.StatusNotFound, "avatar_upload_not_found", "avatar upload not found or expired")
+		case errors.Is(err, uploads.ErrUploadNotFound):
+			WriteError(w, http.StatusNotFound, "upload_not_found", "uploaded object not found")
+		default:
+			slog.Error("UploadComplete: request failed", "error", err)
+			WriteError(w, statusForPhotoError(err), "internal_error", "something went wrong")
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
 
 func statusForPhotoError(err error) int {
 	if errors.Is(err, context.DeadlineExceeded) {

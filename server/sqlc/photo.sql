@@ -69,19 +69,72 @@ WHERE id = sqlc.arg(photo_id)
   AND owner_user_id = sqlc.arg(owner_user_id)
 RETURNING id, bucket, object_key_original;
 
--- -- name: LockExpiredPendingPhotoUploads :many
--- SELECT id, bucket, object_key_original
--- FROM photos
--- WHERE status = 'pending'
---   AND expires_at < now()
--- ORDER BY expires_at
--- LIMIT sqlc.arg(limit_count)
--- FOR UPDATE SKIP LOCKED;
+-- name: CreatePendingAvatarUpload :exec
+INSERT INTO avatar_uploads (
+  id,
+  user_id,
+  bucket,
+  object_key,
+  content_type,
+  size,
+  expires_at
+) VALUES (
+  sqlc.arg(id),
+  sqlc.arg(user_id),
+  sqlc.arg(bucket),
+  sqlc.arg(object_key),
+  sqlc.arg(content_type),
+  sqlc.arg(size),
+  sqlc.arg(expires_at)
+);
 
--- -- name: ExpirePhotoUploadsByIDs :many
--- UPDATE photos
--- SET status = 'expired',
---     failure_reason = 'unfinished_upload'
--- WHERE id = ANY(sqlc.arg(ids)::uuid[])
---   AND status = 'pending'
--- RETURNING id, bucket, object_key_original;
+-- name: MarkAvatarUploadProcessing :one
+UPDATE avatar_uploads
+SET status = 'processing'
+WHERE id = sqlc.arg(id)
+  AND user_id = sqlc.arg(user_id)
+  AND status IN ('pending', 'processing')
+  AND expires_at > now()
+RETURNING id, user_id, bucket, object_key, content_type, size, status;
+
+-- name: GetAvatarUploadStatus :one
+SELECT status
+FROM avatar_uploads
+WHERE id = sqlc.arg(id)
+  AND user_id = sqlc.arg(user_id);
+
+-- name: MarkAvatarUploadFailed :exec
+UPDATE avatar_uploads
+SET status = 'failed', failure_reason = sqlc.arg(failure_reason)
+WHERE id = sqlc.arg(id)
+  AND user_id = sqlc.arg(user_id)
+  AND status = 'processing';
+
+-- name: GetCurrentAvatarForUpdate :one
+SELECT user_id, bucket, object_key, content_type, uploaded_at, size
+FROM user_avatars
+WHERE user_id = sqlc.arg(user_id)
+FOR UPDATE;
+
+-- name: MarkAvatarUploadReady :exec
+UPDATE avatar_uploads
+SET status = 'ready', completed_at = now()
+WHERE id = sqlc.arg(id)
+  AND user_id = sqlc.arg(user_id)
+  AND status = 'processing';
+
+-- name: UpsertCurrentAvatar :exec
+INSERT INTO user_avatars (user_id, bucket, object_key, content_type, size)
+VALUES (
+  sqlc.arg(user_id),
+  sqlc.arg(bucket),
+  sqlc.arg(object_key),
+  sqlc.arg(content_type),
+  sqlc.arg(size)
+)
+ON CONFLICT (user_id) DO UPDATE
+SET bucket = EXCLUDED.bucket,
+    object_key = EXCLUDED.object_key,
+    content_type = EXCLUDED.content_type,
+    size = EXCLUDED.size,
+    uploaded_at = now();
