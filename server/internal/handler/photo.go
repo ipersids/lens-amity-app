@@ -19,6 +19,7 @@ type photoService interface {
 	UploadPhotoIntent(ctx context.Context, p uploads.UploadPhotoIntentParams) (*uploads.UploadPhotoIntentResult, error)
 	UploadPhotoComplete(ctx context.Context, p uploads.UploadPhotoCompleteParams) error
 	DeletePhoto(ctx context.Context, p uploads.DeletePhotoParams) error
+	DeleteAvatar(ctx context.Context, userID uuid.UUID) error
 	UploadAvatarIntent(ctx context.Context, p uploads.UploadAvatarIntentParams) (*uploads.UploadAvatarIntentResult, error)
 	UploadAvatarComplete(ctx context.Context, p uploads.UploadAvatarCompleteParams) error
 }
@@ -206,6 +207,25 @@ func (ph *PhotoHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		WriteError(w, http.StatusInternalServerError, "internal_server_error", "something went wrong")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (ph *PhotoHandler) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
+	if !ok {
+		WriteError(w, http.StatusUnauthorized, "unauthorized", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	if err := ph.photoService.DeleteAvatar(ctx, userID); err != nil {
+		slog.Error("DeleteAvatar: request failed", "error", err)
+		WriteError(w, statusForPhotoError(err), "internal_error", "something went wrong")
 		return
 	}
 

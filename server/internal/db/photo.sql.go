@@ -111,6 +111,24 @@ func (q *Queries) CreatePendingPhotoUploadRecord(ctx context.Context, arg Create
 	return err
 }
 
+const deleteCurrentAvatar = `-- name: DeleteCurrentAvatar :one
+DELETE FROM user_avatars
+WHERE user_id = $1
+RETURNING bucket, object_key
+`
+
+type DeleteCurrentAvatarRow struct {
+	Bucket    string
+	ObjectKey string
+}
+
+func (q *Queries) DeleteCurrentAvatar(ctx context.Context, userID uuid.UUID) (DeleteCurrentAvatarRow, error) {
+	row := q.db.QueryRow(ctx, deleteCurrentAvatar, userID)
+	var i DeleteCurrentAvatarRow
+	err := row.Scan(&i.Bucket, &i.ObjectKey)
+	return i, err
+}
+
 const getAvatarUploadStatus = `-- name: GetAvatarUploadStatus :one
 SELECT status
 FROM avatar_uploads
@@ -149,6 +167,26 @@ func (q *Queries) GetCurrentAvatarForUpdate(ctx context.Context, userID uuid.UUI
 		&i.Size,
 	)
 	return i, err
+}
+
+const markAvatarUploadDeleted = `-- name: MarkAvatarUploadDeleted :exec
+UPDATE avatar_uploads
+SET status = 'deleted', deleted_at = now()
+WHERE user_id = $1
+  AND bucket = $2
+  AND object_key = $3
+  AND status IN ('ready', 'superseded')
+`
+
+type MarkAvatarUploadDeletedParams struct {
+	UserID    uuid.UUID
+	Bucket    string
+	ObjectKey string
+}
+
+func (q *Queries) MarkAvatarUploadDeleted(ctx context.Context, arg MarkAvatarUploadDeletedParams) error {
+	_, err := q.db.Exec(ctx, markAvatarUploadDeleted, arg.UserID, arg.Bucket, arg.ObjectKey)
+	return err
 }
 
 const markAvatarUploadFailed = `-- name: MarkAvatarUploadFailed :exec
@@ -225,6 +263,26 @@ type MarkAvatarUploadReadyParams struct {
 
 func (q *Queries) MarkAvatarUploadReady(ctx context.Context, arg MarkAvatarUploadReadyParams) error {
 	_, err := q.db.Exec(ctx, markAvatarUploadReady, arg.ID, arg.UserID)
+	return err
+}
+
+const markAvatarUploadSuperseded = `-- name: MarkAvatarUploadSuperseded :exec
+UPDATE avatar_uploads
+SET status = 'superseded', superseded_at = now()
+WHERE user_id = $1
+  AND bucket = $2
+  AND object_key = $3
+  AND status = 'ready'
+`
+
+type MarkAvatarUploadSupersededParams struct {
+	UserID    uuid.UUID
+	Bucket    string
+	ObjectKey string
+}
+
+func (q *Queries) MarkAvatarUploadSuperseded(ctx context.Context, arg MarkAvatarUploadSupersededParams) error {
+	_, err := q.db.Exec(ctx, markAvatarUploadSuperseded, arg.UserID, arg.Bucket, arg.ObjectKey)
 	return err
 }
 

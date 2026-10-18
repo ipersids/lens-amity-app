@@ -185,6 +185,12 @@ type pendingAvatarUploadData struct {
 	Size        int64
 }
 
+type avatarObjectData struct {
+	OwnerUserID uuid.UUID
+	Bucket      string
+	Key         string
+}
+
 func (r *uploadRepository) pendingAvatarUpload(ctx context.Context, p pendingAvatarUploadParams) (*pendingAvatarUploadData, error) {
 	row, err := r.store.Queries.MarkAvatarUploadProcessing(ctx, db.MarkAvatarUploadProcessingParams{
 		ID:     p.ID,
@@ -245,6 +251,15 @@ func (r *uploadRepository) promoteAvatarUpload(ctx context.Context, p pendingAva
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("lock current avatar: %w", err)
 	}
+	if err == nil {
+		if err := q.MarkAvatarUploadSuperseded(ctx, db.MarkAvatarUploadSupersededParams{
+			UserID:    p.OwnerUserID,
+			Bucket:    previous.Bucket,
+			ObjectKey: previous.ObjectKey,
+		}); err != nil {
+			return nil, fmt.Errorf("mark replaced avatar upload superseded: %w", err)
+		}
+	}
 
 	if err := q.MarkAvatarUploadReady(ctx, db.MarkAvatarUploadReadyParams{ID: p.ID, UserID: p.OwnerUserID}); err != nil {
 		return nil, fmt.Errorf("mark avatar upload ready: %w", err)
@@ -266,6 +281,17 @@ func (r *uploadRepository) promoteAvatarUpload(ctx context.Context, p pendingAva
 		return nil, nil
 	}
 	return &previous, nil
+}
+
+func (r *uploadRepository) markAvatarUploadDeleted(ctx context.Context, p avatarObjectData) error {
+	if err := r.store.Queries.MarkAvatarUploadDeleted(ctx, db.MarkAvatarUploadDeletedParams{
+		UserID:    p.OwnerUserID,
+		Bucket:    p.Bucket,
+		ObjectKey: p.Key,
+	}); err != nil {
+		return fmt.Errorf("mark avatar upload deleted: %w", err)
+	}
+	return nil
 }
 
 type pendingPhotoUploadParams struct {
@@ -384,4 +410,31 @@ func (r *uploadRepository) deletePhotoRecord(ctx context.Context, p deletePhotoR
 	}
 
 	return nil
+}
+
+func (r *uploadRepository) deleteAvatar(ctx context.Context, userID uuid.UUID) (*avatarObjectData, error) {
+	tx, err := r.store.Pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin avatar deletion: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	avatar, err := r.store.Queries.WithTx(tx).DeleteCurrentAvatar(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("delete current avatar record: %w", err)
+	}
+	if err := r.store.Queries.WithTx(tx).MarkAvatarUploadSuperseded(ctx, db.MarkAvatarUploadSupersededParams{
+		UserID:    userID,
+		Bucket:    avatar.Bucket,
+		ObjectKey: avatar.ObjectKey,
+	}); err != nil {
+		return nil, fmt.Errorf("mark deleted avatar upload superseded: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit avatar deletion: %w", err)
+	}
+	return &avatarObjectData{OwnerUserID: userID, Bucket: avatar.Bucket, Key: avatar.ObjectKey}, nil
 }

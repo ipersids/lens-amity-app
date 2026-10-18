@@ -50,7 +50,7 @@ func (h *handlers) registerRoutes(mux *http.ServeMux, authRequiredMiddleware fun
 	mux.Handle("PUT /api/users/me/password", authRequiredMiddleware(h.auth.UpdateMyPassword))
 	mux.Handle("POST /api/users/me/avatar/uploads", authRequiredMiddleware(h.photo.UploadAvatarIntent))
 	mux.Handle("POST /api/users/me/avatar/uploads/{id}/complete", authRequiredMiddleware(h.photo.UploadAvatarComplete))
-	// mux.Handle("DELETE /api/users/me/avatar", authRequiredMiddleware(h.auth.DeleteMyAvatar))
+	mux.Handle("DELETE /api/users/me/avatar", authRequiredMiddleware(h.photo.DeleteAvatar))
 }
 
 func main() {

@@ -71,6 +71,8 @@ type AvatarUpload struct {
 	CreatedAt     time.Time
 	ExpiresAt     time.Time
 	CompletedAt   pgtype.Timestamptz
+	SupersededAt  pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
 }
 
 type Photo struct {

@@ -47,11 +47,13 @@ type photoStore interface {
 	headObject(ctx context.Context, bucket string, key string) (*objectHeadData, error)
 	deleteObject(ctx context.Context, bucket string, key string) error
 	deletePhotoRecord(ctx context.Context, p deletePhotoRecordParams) error
+	deleteAvatar(ctx context.Context, userID uuid.UUID) (*avatarObjectData, error)
 	createPendingAvatarUpload(ctx context.Context, p createPendingAvatarUploadParams) error
 	pendingAvatarUpload(ctx context.Context, p pendingAvatarUploadParams) (*pendingAvatarUploadData, error)
 	avatarUploadStatus(ctx context.Context, p pendingAvatarUploadParams) (string, error)
 	failPendingAvatarUpload(ctx context.Context, p failPendingAvatarUploadParams) error
 	promoteAvatarUpload(ctx context.Context, p pendingAvatarUploadData) (*db.UserAvatar, error)
+	markAvatarUploadDeleted(ctx context.Context, p avatarObjectData) error
 }
 
 func NewPhotoService(store *db.Store, s3Client *storage.Client) (*PhotoService, error) {
@@ -232,6 +234,31 @@ func (ps *PhotoService) DeletePhoto(ctx context.Context, p DeletePhotoParams) er
 	return nil
 }
 
+func (ps *PhotoService) DeleteAvatar(ctx context.Context, userID uuid.UUID) error {
+	if ctx == nil {
+		return fmt.Errorf("%w: nil context", ErrInternal)
+	}
+	if userID == uuid.Nil {
+		return fmt.Errorf("%w: owner user id is required", ErrInternal)
+	}
+
+	avatar, err := ps.repo.deleteAvatar(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("%w: delete avatar: %w", ErrInternal, err)
+	}
+	if avatar == nil {
+		return nil
+	}
+	if err := ps.repo.deleteObject(ctx, avatar.Bucket, avatar.Key); err != nil {
+		slog.Warn("delete avatar object", "error", err, "user_id", userID, "object_key", avatar.Key)
+		return nil
+	}
+	if err := ps.repo.markAvatarUploadDeleted(ctx, *avatar); err != nil {
+		slog.Warn("mark avatar upload deleted", "error", err, "user_id", userID, "object_key", avatar.Key)
+	}
+	return nil
+}
+
 type UploadAvatarIntentParams struct {
 	OwnerUserID uuid.UUID
 	ContentType string
@@ -372,6 +399,8 @@ func (ps *PhotoService) UploadAvatarComplete(ctx context.Context, p UploadAvatar
 	if previous != nil && (previous.Bucket != pendingUpload.Bucket || previous.ObjectKey != pendingUpload.Key) {
 		if err := ps.repo.deleteObject(ctx, previous.Bucket, previous.ObjectKey); err != nil {
 			slog.Warn("delete replaced avatar object", "error", err, "user_id", p.OwnerUserID, "object_key", previous.ObjectKey)
+		} else if err := ps.repo.markAvatarUploadDeleted(ctx, avatarObjectData{OwnerUserID: p.OwnerUserID, Bucket: previous.Bucket, Key: previous.ObjectKey}); err != nil {
+			slog.Warn("mark replaced avatar upload deleted", "error", err, "user_id", p.OwnerUserID, "object_key", previous.ObjectKey)
 		}
 	}
 
