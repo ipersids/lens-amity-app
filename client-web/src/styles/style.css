@@ -513,6 +513,25 @@ footer {
   font-weight: 800;
 }
 
+.settings-avatar-button:not(:disabled) {
+  cursor: pointer;
+}
+
+.settings-avatar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-avatar-delete-button {
+  background: var(--error);
+  color: #ffffff;
+}
+
+.settings-avatar-delete-button:not(:disabled):hover {
+  background: #b91c1c;
+}
+
 .settings-visibility-field {
   display: grid;
   gap: 10px;

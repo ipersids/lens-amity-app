@@ -2,21 +2,8 @@ import { useState } from "react";
 import { Navigate } from "react-router";
 import type { Visibility } from "../../../services/users";
 import { useUser } from "../../../stores/auth";
-import { Avatar, useProfile, useUpdateProfile } from "../../profile";
-
-const AvatarUpdate = ({ url, displayName }: { url?: string; displayName: string }) => {
-  return (
-    <div className="settings-photo-field">
-      <span className="settings-field-title">Photo</span>
-      <div className="settings-photo-row">
-        <Avatar avatarURL={url} displayName={displayName} size="settings" />
-        <button className="settings-avatar-button" type="button" disabled>
-          Change
-        </button>
-      </div>
-    </div>
-  );
-};
+import { useProfile, useUpdateProfile } from "../../profile";
+import AvatarSettings from "./AvatarSettings";
 
 type ProfileUpdateProps = {
   username: string;
@@ -160,7 +147,7 @@ const ProfileSettings = () => {
       <p className="settings-intro">
         Information you add here is visible to anyone who can view your profile.
       </p>
-      <AvatarUpdate url={profile.avatar?.url} displayName={profile.displayName} />
+      <AvatarSettings url={profile.avatar?.url} displayName={profile.displayName} />
       <ProfileUpdate
         username={profile.username}
         displayName={profile.displayName}
