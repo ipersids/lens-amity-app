@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"lensamity/internal/db"
 	"lensamity/internal/storage"
 	"strings"
@@ -82,6 +83,21 @@ func (r *uploadRepository) headObject(ctx context.Context, bucket string, key st
 	}
 
 	return &objectHeadData{ContentType: *head.ContentType, Size: *head.ContentLength}, nil
+}
+
+func (r *uploadRepository) getObject(ctx context.Context, bucket string, key string) (io.ReadCloser, error) {
+	object, err := r.s3.Client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		if storage.IsObjectNotFound(err) {
+			return nil, ErrUploadNotFound
+		}
+		return nil, fmt.Errorf("s3 get object: %w", err)
+	}
+
+	return object.Body, nil
 }
 
 func (r *uploadRepository) deleteObject(ctx context.Context, bucket string, key string) error {

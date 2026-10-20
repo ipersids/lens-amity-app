@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
+	"io"
 	"lensamity/internal/db"
 	"lensamity/internal/storage"
 	"log/slog"
@@ -13,12 +17,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	_ "golang.org/x/image/webp"
 )
 
 var (
 	ErrInternal              = errors.New("internal error")
 	ErrUnsupportedFileType   = errors.New("unsupported file type")
 	ErrFileTooLarge          = errors.New("file size exceeded limits")
+	ErrInvalidImage          = errors.New("invalid image")
+	ErrImageDimensions       = errors.New("image dimensions exceeded limits")
+	ErrImageAspectRatio      = errors.New("image aspect ratio exceeded limits")
+	ErrImageTooManyPixels    = errors.New("image pixel count exceeded limits")
 	ErrPhotoNotFound         = errors.New("photo not found")
 	ErrAvatarUploadNotFound  = errors.New("avatar upload not found or expired")
 	ErrPhotoNotCompletable   = errors.New("photo cannot be completed")
@@ -32,6 +41,9 @@ var (
 
 const maxImageBytes int64 = 10 * 1024 * 1024
 const maxAvatarBytes int64 = 1 * 1024 * 1024
+const maxAvatarDimension = 4_096
+const maxAvatarPixels int64 = 16_000_000
+const maxAvatarAspectRatio = 3
 
 type PhotoService struct {
 	repo photoStore
@@ -45,6 +57,7 @@ type photoStore interface {
 	completePendingPhotoUpload(ctx context.Context, p completePendingPhotoUploadParams) error
 	failPendingPhotoUpload(ctx context.Context, p failPendingPhotoUploadParams) error
 	headObject(ctx context.Context, bucket string, key string) (*objectHeadData, error)
+	getObject(ctx context.Context, bucket string, key string) (io.ReadCloser, error)
 	deleteObject(ctx context.Context, bucket string, key string) error
 	deletePhotoRecord(ctx context.Context, p deletePhotoRecordParams) error
 	deleteAvatar(ctx context.Context, userID uuid.UUID) (*avatarObjectData, error)
@@ -332,6 +345,59 @@ type UploadAvatarCompleteParams struct {
 	OwnerUserID uuid.UUID
 }
 
+func validateAvatarImage(r io.Reader, expectedContentType string) error {
+	config, format, err := image.DecodeConfig(r)
+	if err != nil {
+		return fmt.Errorf("%w: decode image configuration", ErrInvalidImage)
+	}
+
+	contentType, ok := map[string]string{
+		"jpeg": "image/jpeg",
+		"png":  "image/png",
+		"webp": "image/webp",
+	}[format]
+	if !ok || contentType != expectedContentType {
+		return ErrUnsupportedFileType
+	}
+
+	return validateAvatarDimensions(config.Width, config.Height)
+}
+
+func validateAvatarDimensions(width int, height int) error {
+	if width <= 0 || height <= 0 {
+		return ErrInvalidImage
+	}
+	if width > maxAvatarDimension || height > maxAvatarDimension {
+		return ErrImageDimensions
+	}
+
+	pixels := int64(width) * int64(height)
+	if pixels > maxAvatarPixels {
+		return ErrImageTooManyPixels
+	}
+
+	if width > height*maxAvatarAspectRatio || height > width*maxAvatarAspectRatio {
+		return ErrImageAspectRatio
+	}
+
+	return nil
+}
+
+func avatarImageFailureReason(err error) string {
+	switch {
+	case errors.Is(err, ErrInvalidImage):
+		return "invalid_image"
+	case errors.Is(err, ErrImageDimensions):
+		return "dimensions_exceeded"
+	case errors.Is(err, ErrImageTooManyPixels):
+		return "pixel_count_exceeded"
+	case errors.Is(err, ErrImageAspectRatio):
+		return "aspect_ratio_exceeded"
+	default:
+		return "unsupported_image"
+	}
+}
+
 func (ps *PhotoService) UploadAvatarComplete(ctx context.Context, p UploadAvatarCompleteParams) error {
 	if ctx == nil {
 		return fmt.Errorf("%w: nil context", ErrInternal)
@@ -390,6 +456,22 @@ func (ps *PhotoService) UploadAvatarComplete(ctx context.Context, p UploadAvatar
 	}
 	if contentType != pendingUpload.ContentType {
 		return fail("content_type_mismatch", ErrUnsupportedFileType, true)
+	}
+
+	object, err := ps.repo.getObject(ctx, pendingUpload.Bucket, pendingUpload.Key)
+	if err != nil {
+		if errors.Is(err, ErrUploadNotFound) {
+			return fail("upload_not_found", err, false)
+		}
+		return fail("get_object_failed", err, true)
+	}
+
+	validationErr := validateAvatarImage(io.LimitReader(object, maxAvatarBytes+1), contentType)
+	if closeErr := object.Close(); closeErr != nil {
+		return fail("close_object_failed", fmt.Errorf("close avatar upload object: %w", closeErr), true)
+	}
+	if validationErr != nil {
+		return fail(avatarImageFailureReason(validationErr), validationErr, true)
 	}
 
 	previous, err := ps.repo.promoteAvatarUpload(ctx, *pendingUpload)

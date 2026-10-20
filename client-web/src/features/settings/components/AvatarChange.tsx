@@ -8,9 +8,10 @@ import useUpdateAvatar from "../../../hooks/useUpdateAvatar";
 const outputSize = 512;
 const initialCrop = { x: 0, y: 0 };
 const acceptedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
-const maxImageBytes = 10 * 1024 * 1024;
-const maxImageDimension = 8_000;
-const maxImagePixels = 32_000_000;
+const maxImageBytes = 1 * 1024 * 1024;
+const maxImageDimension = 4_096;
+const maxImagePixels = 16_000_000;
+const maxImageAspectRatio = 3;
 
 const loadImage = (url: string) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
@@ -26,7 +27,7 @@ const createValidatedImageURL = async (file: File) => {
   }
 
   if (file.size > maxImageBytes) {
-    throw new Error("Choose an image smaller than 10 MB.");
+    throw new Error("Choose an image smaller than 1 MB.");
   }
 
   const imageURL = URL.createObjectURL(file);
@@ -36,11 +37,18 @@ const createValidatedImageURL = async (file: File) => {
     const pixels = image.naturalWidth * image.naturalHeight;
 
     if (image.naturalWidth > maxImageDimension || image.naturalHeight > maxImageDimension) {
-      throw new Error("Choose an image no larger than 8,000 pixels on either side.");
+      throw new Error("Choose an image no larger than 4,096 pixels on either side.");
     }
 
     if (pixels > maxImagePixels) {
-      throw new Error("Choose an image with no more than 32 megapixels.");
+      throw new Error("Choose an image with no more than 16 megapixels.");
+    }
+
+    if (
+      image.naturalWidth > image.naturalHeight * maxImageAspectRatio ||
+      image.naturalHeight > image.naturalWidth * maxImageAspectRatio
+    ) {
+      throw new Error("Choose an image with an aspect ratio no wider than 3:1.");
     }
 
     return imageURL;

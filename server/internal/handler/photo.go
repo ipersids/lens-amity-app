@@ -338,6 +338,14 @@ func (ph *PhotoHandler) UploadAvatarComplete(w http.ResponseWriter, r *http.Requ
 			WriteError(w, http.StatusUnsupportedMediaType, "unsupported_file_type", "unsupported file type")
 		case errors.Is(err, uploads.ErrFileTooLarge):
 			WriteError(w, http.StatusRequestEntityTooLarge, "file_too_large", "avatar must be 1 MB or smaller")
+		case errors.Is(err, uploads.ErrInvalidImage):
+			WriteError(w, http.StatusUnprocessableEntity, "invalid_image", "uploaded file is not a valid image")
+		case errors.Is(err, uploads.ErrImageDimensions):
+			WriteError(w, http.StatusUnprocessableEntity, "image_dimensions_exceeded", "avatar dimensions must not exceed 4096 pixels")
+		case errors.Is(err, uploads.ErrImageTooManyPixels):
+			WriteError(w, http.StatusUnprocessableEntity, "image_pixel_count_exceeded", "avatar must not exceed 16 megapixels")
+		case errors.Is(err, uploads.ErrImageAspectRatio):
+			WriteError(w, http.StatusUnprocessableEntity, "image_aspect_ratio_exceeded", "avatar aspect ratio must not exceed 3:1")
 		case errors.Is(err, uploads.ErrAvatarUploadNotFound):
 			WriteError(w, http.StatusNotFound, "avatar_upload_not_found", "avatar upload not found or expired")
 		case errors.Is(err, uploads.ErrUploadNotFound):
