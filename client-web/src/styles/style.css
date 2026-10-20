@@ -513,6 +513,96 @@ footer {
   font-weight: 800;
 }
 
+.settings-avatar-button:not(:disabled) {
+  cursor: pointer;
+}
+
+.settings-avatar-change-button {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.settings-avatar-change-button:not(:disabled):hover {
+  background: var(--primary-hover);
+}
+
+.settings-avatar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-avatar-delete-button {
+  display: grid;
+  width: 44px;
+  place-items: center;
+  padding: 0;
+  background: var(--error);
+  color: #ffffff;
+}
+
+.settings-avatar-delete-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.settings-avatar-delete-button:not(:disabled):hover {
+  background: #b91c1c;
+}
+
+.avatar-change-dialog {
+  width: min(100% - 32px, 520px);
+}
+
+.avatar-change-cropper {
+  position: relative;
+  width: min(100%, 360px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.avatar-change-empty {
+  display: grid;
+  height: 100%;
+  place-content: center;
+  gap: 10px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.avatar-change-empty svg {
+  width: 42px;
+  height: 42px;
+  margin: auto;
+}
+
+.avatar-change-file-input {
+  display: none;
+}
+
+.avatar-change-file-button {
+  justify-self: start;
+}
+
+.avatar-change-file-button--empty {
+  justify-self: center;
+  margin-top: 10px;
+}
+
+.avatar-change-zoom {
+  display: grid;
+  gap: 8px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.avatar-change-zoom input {
+  width: 100%;
+}
+
 .settings-visibility-field {
   display: grid;
   gap: 10px;

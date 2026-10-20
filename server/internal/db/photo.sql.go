@@ -13,6 +13,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createPendingAvatarUpload = `-- name: CreatePendingAvatarUpload :exec
+INSERT INTO avatar_uploads (
+  id,
+  user_id,
+  bucket,
+  object_key,
+  content_type,
+  size,
+  expires_at
+) VALUES (
+  $1,
+  $2,
+  $3,
+  $4,
+  $5,
+  $6,
+  $7
+)
+`
+
+type CreatePendingAvatarUploadParams struct {
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Bucket      string
+	ObjectKey   string
+	ContentType string
+	Size        int64
+	ExpiresAt   time.Time
+}
+
+func (q *Queries) CreatePendingAvatarUpload(ctx context.Context, arg CreatePendingAvatarUploadParams) error {
+	_, err := q.db.Exec(ctx, createPendingAvatarUpload,
+		arg.ID,
+		arg.UserID,
+		arg.Bucket,
+		arg.ObjectKey,
+		arg.ContentType,
+		arg.Size,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
 const createPendingPhotoUploadRecord = `-- name: CreatePendingPhotoUploadRecord :exec
 INSERT INTO photos (
   id,
@@ -65,6 +108,181 @@ func (q *Queries) CreatePendingPhotoUploadRecord(ctx context.Context, arg Create
 		arg.Description,
 		arg.ExpiresAt,
 	)
+	return err
+}
+
+const deleteCurrentAvatar = `-- name: DeleteCurrentAvatar :one
+DELETE FROM user_avatars
+WHERE user_id = $1
+RETURNING bucket, object_key
+`
+
+type DeleteCurrentAvatarRow struct {
+	Bucket    string
+	ObjectKey string
+}
+
+func (q *Queries) DeleteCurrentAvatar(ctx context.Context, userID uuid.UUID) (DeleteCurrentAvatarRow, error) {
+	row := q.db.QueryRow(ctx, deleteCurrentAvatar, userID)
+	var i DeleteCurrentAvatarRow
+	err := row.Scan(&i.Bucket, &i.ObjectKey)
+	return i, err
+}
+
+const getAvatarUploadStatus = `-- name: GetAvatarUploadStatus :one
+SELECT status
+FROM avatar_uploads
+WHERE id = $1
+  AND user_id = $2
+`
+
+type GetAvatarUploadStatusParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) GetAvatarUploadStatus(ctx context.Context, arg GetAvatarUploadStatusParams) (string, error) {
+	row := q.db.QueryRow(ctx, getAvatarUploadStatus, arg.ID, arg.UserID)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
+const getCurrentAvatarForUpdate = `-- name: GetCurrentAvatarForUpdate :one
+SELECT user_id, bucket, object_key, content_type, uploaded_at, size
+FROM user_avatars
+WHERE user_id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetCurrentAvatarForUpdate(ctx context.Context, userID uuid.UUID) (UserAvatar, error) {
+	row := q.db.QueryRow(ctx, getCurrentAvatarForUpdate, userID)
+	var i UserAvatar
+	err := row.Scan(
+		&i.UserID,
+		&i.Bucket,
+		&i.ObjectKey,
+		&i.ContentType,
+		&i.UploadedAt,
+		&i.Size,
+	)
+	return i, err
+}
+
+const markAvatarUploadDeleted = `-- name: MarkAvatarUploadDeleted :exec
+UPDATE avatar_uploads
+SET status = 'deleted', deleted_at = now()
+WHERE user_id = $1
+  AND bucket = $2
+  AND object_key = $3
+  AND status IN ('ready', 'superseded')
+`
+
+type MarkAvatarUploadDeletedParams struct {
+	UserID    uuid.UUID
+	Bucket    string
+	ObjectKey string
+}
+
+func (q *Queries) MarkAvatarUploadDeleted(ctx context.Context, arg MarkAvatarUploadDeletedParams) error {
+	_, err := q.db.Exec(ctx, markAvatarUploadDeleted, arg.UserID, arg.Bucket, arg.ObjectKey)
+	return err
+}
+
+const markAvatarUploadFailed = `-- name: MarkAvatarUploadFailed :exec
+UPDATE avatar_uploads
+SET status = 'failed', failure_reason = $1
+WHERE id = $2
+  AND user_id = $3
+  AND status = 'processing'
+`
+
+type MarkAvatarUploadFailedParams struct {
+	FailureReason pgtype.Text
+	ID            uuid.UUID
+	UserID        uuid.UUID
+}
+
+func (q *Queries) MarkAvatarUploadFailed(ctx context.Context, arg MarkAvatarUploadFailedParams) error {
+	_, err := q.db.Exec(ctx, markAvatarUploadFailed, arg.FailureReason, arg.ID, arg.UserID)
+	return err
+}
+
+const markAvatarUploadProcessing = `-- name: MarkAvatarUploadProcessing :one
+UPDATE avatar_uploads
+SET status = 'processing'
+WHERE id = $1
+  AND user_id = $2
+  AND status IN ('pending', 'processing')
+  AND expires_at > now()
+RETURNING id, user_id, bucket, object_key, content_type, size, status
+`
+
+type MarkAvatarUploadProcessingParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+type MarkAvatarUploadProcessingRow struct {
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Bucket      string
+	ObjectKey   string
+	ContentType string
+	Size        int64
+	Status      string
+}
+
+func (q *Queries) MarkAvatarUploadProcessing(ctx context.Context, arg MarkAvatarUploadProcessingParams) (MarkAvatarUploadProcessingRow, error) {
+	row := q.db.QueryRow(ctx, markAvatarUploadProcessing, arg.ID, arg.UserID)
+	var i MarkAvatarUploadProcessingRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Bucket,
+		&i.ObjectKey,
+		&i.ContentType,
+		&i.Size,
+		&i.Status,
+	)
+	return i, err
+}
+
+const markAvatarUploadReady = `-- name: MarkAvatarUploadReady :exec
+UPDATE avatar_uploads
+SET status = 'ready', completed_at = now()
+WHERE id = $1
+  AND user_id = $2
+  AND status = 'processing'
+`
+
+type MarkAvatarUploadReadyParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) MarkAvatarUploadReady(ctx context.Context, arg MarkAvatarUploadReadyParams) error {
+	_, err := q.db.Exec(ctx, markAvatarUploadReady, arg.ID, arg.UserID)
+	return err
+}
+
+const markAvatarUploadSuperseded = `-- name: MarkAvatarUploadSuperseded :exec
+UPDATE avatar_uploads
+SET status = 'superseded', superseded_at = now()
+WHERE user_id = $1
+  AND bucket = $2
+  AND object_key = $3
+  AND status = 'ready'
+`
+
+type MarkAvatarUploadSupersededParams struct {
+	UserID    uuid.UUID
+	Bucket    string
+	ObjectKey string
+}
+
+func (q *Queries) MarkAvatarUploadSuperseded(ctx context.Context, arg MarkAvatarUploadSupersededParams) error {
+	_, err := q.db.Exec(ctx, markAvatarUploadSuperseded, arg.UserID, arg.Bucket, arg.ObjectKey)
 	return err
 }
 
@@ -200,4 +418,40 @@ func (q *Queries) MarkProcessedPhotoUploadRecordFailed(ctx context.Context, arg 
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const upsertCurrentAvatar = `-- name: UpsertCurrentAvatar :exec
+INSERT INTO user_avatars (user_id, bucket, object_key, content_type, size)
+VALUES (
+  $1,
+  $2,
+  $3,
+  $4,
+  $5
+)
+ON CONFLICT (user_id) DO UPDATE
+SET bucket = EXCLUDED.bucket,
+    object_key = EXCLUDED.object_key,
+    content_type = EXCLUDED.content_type,
+    size = EXCLUDED.size,
+    uploaded_at = now()
+`
+
+type UpsertCurrentAvatarParams struct {
+	UserID      uuid.UUID
+	Bucket      string
+	ObjectKey   string
+	ContentType string
+	Size        int64
+}
+
+func (q *Queries) UpsertCurrentAvatar(ctx context.Context, arg UpsertCurrentAvatarParams) error {
+	_, err := q.db.Exec(ctx, upsertCurrentAvatar,
+		arg.UserID,
+		arg.Bucket,
+		arg.ObjectKey,
+		arg.ContentType,
+		arg.Size,
+	)
+	return err
 }

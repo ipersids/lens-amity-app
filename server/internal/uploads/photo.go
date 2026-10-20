@@ -4,21 +4,32 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
+	"io"
 	"lensamity/internal/db"
 	"lensamity/internal/storage"
+	"log/slog"
 	"mime"
 	"time"
 
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	_ "golang.org/x/image/webp"
 )
 
 var (
 	ErrInternal              = errors.New("internal error")
 	ErrUnsupportedFileType   = errors.New("unsupported file type")
 	ErrFileTooLarge          = errors.New("file size exceeded limits")
+	ErrInvalidImage          = errors.New("invalid image")
+	ErrImageDimensions       = errors.New("image dimensions exceeded limits")
+	ErrImageAspectRatio      = errors.New("image aspect ratio exceeded limits")
+	ErrImageTooManyPixels    = errors.New("image pixel count exceeded limits")
 	ErrPhotoNotFound         = errors.New("photo not found")
+	ErrAvatarUploadNotFound  = errors.New("avatar upload not found or expired")
 	ErrPhotoNotCompletable   = errors.New("photo cannot be completed")
 	ErrUploadNotFound        = errors.New("uploaded object not found")
 	ErrUploadMetadataMissing = errors.New("uploaded object is missing content type or length")
@@ -29,6 +40,10 @@ var (
 )
 
 const maxImageBytes int64 = 10 * 1024 * 1024
+const maxAvatarBytes int64 = 1 * 1024 * 1024
+const maxAvatarDimension = 4_096
+const maxAvatarPixels int64 = 16_000_000
+const maxAvatarAspectRatio = 3
 
 type PhotoService struct {
 	repo photoStore
@@ -36,14 +51,22 @@ type PhotoService struct {
 }
 
 type photoStore interface {
-	presignPutObject(ctx context.Context, p presignPutObjectParams) (*v4.PresignedHTTPRequest, error)
+	presignPostObject(ctx context.Context, p presignPutObjectParams) (*s3.PresignedPostRequest, error)
 	createPendingPhotoUpload(ctx context.Context, p createPendingPhotoUploadParams) error
 	pendingPhotoUpload(ctx context.Context, p pendingPhotoUploadParams) (*pendingPhotoUploadData, error)
 	completePendingPhotoUpload(ctx context.Context, p completePendingPhotoUploadParams) error
 	failPendingPhotoUpload(ctx context.Context, p failPendingPhotoUploadParams) error
 	headObject(ctx context.Context, bucket string, key string) (*objectHeadData, error)
+	getObject(ctx context.Context, bucket string, key string) (io.ReadCloser, error)
 	deleteObject(ctx context.Context, bucket string, key string) error
 	deletePhotoRecord(ctx context.Context, p deletePhotoRecordParams) error
+	deleteAvatar(ctx context.Context, userID uuid.UUID) (*avatarObjectData, error)
+	createPendingAvatarUpload(ctx context.Context, p createPendingAvatarUploadParams) error
+	pendingAvatarUpload(ctx context.Context, p pendingAvatarUploadParams) (*pendingAvatarUploadData, error)
+	avatarUploadStatus(ctx context.Context, p pendingAvatarUploadParams) (string, error)
+	failPendingAvatarUpload(ctx context.Context, p failPendingAvatarUploadParams) error
+	promoteAvatarUpload(ctx context.Context, p pendingAvatarUploadData) (*db.UserAvatar, error)
+	markAvatarUploadDeleted(ctx context.Context, p avatarObjectData) error
 }
 
 func NewPhotoService(store *db.Store, s3Client *storage.Client) (*PhotoService, error) {
@@ -72,7 +95,7 @@ type UploadPhotoIntentParams struct {
 }
 
 type UploadPhotoIntentResult struct {
-	PresignedRequest *v4.PresignedHTTPRequest
+	PresignedRequest *s3.PresignedPostRequest
 	PhotoID          uuid.UUID
 }
 
@@ -100,9 +123,10 @@ func (ps *PhotoService) UploadPhotoIntent(ctx context.Context, p UploadPhotoInte
 	)
 	expiresAt := ps.now().UTC().Add(10 * time.Minute)
 
-	req, err := ps.repo.presignPutObject(ctx, presignPutObjectParams{
+	req, err := ps.repo.presignPostObject(ctx, presignPutObjectParams{
 		Key:         key,
 		ContentType: validated.ContentType,
+		MaxSize:     maxImageBytes,
 		ExpiresAt:   expiresAt,
 	})
 	if err != nil {
@@ -218,6 +242,248 @@ func (ps *PhotoService) DeletePhoto(ctx context.Context, p DeletePhotoParams) er
 			return ErrPhotoNotFound
 		}
 		return err
+	}
+
+	return nil
+}
+
+func (ps *PhotoService) DeleteAvatar(ctx context.Context, userID uuid.UUID) error {
+	if ctx == nil {
+		return fmt.Errorf("%w: nil context", ErrInternal)
+	}
+	if userID == uuid.Nil {
+		return fmt.Errorf("%w: owner user id is required", ErrInternal)
+	}
+
+	avatar, err := ps.repo.deleteAvatar(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("%w: delete avatar: %w", ErrInternal, err)
+	}
+	if avatar == nil {
+		return nil
+	}
+	if err := ps.repo.deleteObject(ctx, avatar.Bucket, avatar.Key); err != nil {
+		slog.Warn("delete avatar object", "error", err, "user_id", userID, "object_key", avatar.Key)
+		return nil
+	}
+	if err := ps.repo.markAvatarUploadDeleted(ctx, *avatar); err != nil {
+		slog.Warn("mark avatar upload deleted", "error", err, "user_id", userID, "object_key", avatar.Key)
+	}
+	return nil
+}
+
+type UploadAvatarIntentParams struct {
+	OwnerUserID uuid.UUID
+	ContentType string
+	Size        int64
+}
+
+type UploadAvatarIntentResult struct {
+	PresignedRequest *s3.PresignedPostRequest
+	UploadID         uuid.UUID
+}
+
+func (ps *PhotoService) UploadAvatarIntent(ctx context.Context, p UploadAvatarIntentParams) (*UploadAvatarIntentResult, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("%w: nil context", ErrInternal)
+	}
+
+	if p.OwnerUserID == uuid.Nil {
+		return nil, fmt.Errorf("%w: owner user id is required", ErrInternal)
+	}
+
+	contentType, ext, err := normalizeImageContentType(p.ContentType)
+	if err != nil {
+		return nil, err
+	}
+
+	if p.Size <= 0 || p.Size > maxAvatarBytes {
+		return nil, ErrFileTooLarge
+	}
+
+	uploadID, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("%w: generate avatar upload uuid: %w", ErrInternal, err)
+	}
+
+	key := fmt.Sprintf(
+		"%s/avatars/%s/original.%s",
+		p.OwnerUserID.String(),
+		uploadID.String(),
+		ext,
+	)
+	expiresAt := ps.now().UTC().Add(10 * time.Minute)
+
+	req, err := ps.repo.presignPostObject(ctx, presignPutObjectParams{
+		Key:         key,
+		ContentType: contentType,
+		MaxSize:     maxAvatarBytes,
+		ExpiresAt:   expiresAt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: create presigned avatar upload: %w", ErrInternal, err)
+	}
+
+	err = ps.repo.createPendingAvatarUpload(ctx, createPendingAvatarUploadParams{
+		ID:          uploadID,
+		OwnerUserID: p.OwnerUserID,
+		Key:         key,
+		ContentType: contentType,
+		Size:        p.Size,
+		ExpiresAt:   expiresAt,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("%w: create pending avatar upload: %w", ErrInternal, err)
+	}
+
+	return &UploadAvatarIntentResult{PresignedRequest: req, UploadID: uploadID}, nil
+}
+
+type UploadAvatarCompleteParams struct {
+	ID          uuid.UUID
+	OwnerUserID uuid.UUID
+}
+
+func validateAvatarImage(r io.Reader, expectedContentType string) error {
+	config, format, err := image.DecodeConfig(r)
+	if err != nil {
+		return fmt.Errorf("%w: decode image configuration", ErrInvalidImage)
+	}
+
+	contentType, ok := map[string]string{
+		"jpeg": "image/jpeg",
+		"png":  "image/png",
+		"webp": "image/webp",
+	}[format]
+	if !ok || contentType != expectedContentType {
+		return ErrUnsupportedFileType
+	}
+
+	return validateAvatarDimensions(config.Width, config.Height)
+}
+
+func validateAvatarDimensions(width int, height int) error {
+	if width <= 0 || height <= 0 {
+		return ErrInvalidImage
+	}
+	if width > maxAvatarDimension || height > maxAvatarDimension {
+		return ErrImageDimensions
+	}
+
+	pixels := int64(width) * int64(height)
+	if pixels > maxAvatarPixels {
+		return ErrImageTooManyPixels
+	}
+
+	if width > height*maxAvatarAspectRatio || height > width*maxAvatarAspectRatio {
+		return ErrImageAspectRatio
+	}
+
+	return nil
+}
+
+func avatarImageFailureReason(err error) string {
+	switch {
+	case errors.Is(err, ErrInvalidImage):
+		return "invalid_image"
+	case errors.Is(err, ErrImageDimensions):
+		return "dimensions_exceeded"
+	case errors.Is(err, ErrImageTooManyPixels):
+		return "pixel_count_exceeded"
+	case errors.Is(err, ErrImageAspectRatio):
+		return "aspect_ratio_exceeded"
+	default:
+		return "unsupported_image"
+	}
+}
+
+func (ps *PhotoService) UploadAvatarComplete(ctx context.Context, p UploadAvatarCompleteParams) error {
+	if ctx == nil {
+		return fmt.Errorf("%w: nil context", ErrInternal)
+	}
+	if p.ID == uuid.Nil || p.OwnerUserID == uuid.Nil {
+		return fmt.Errorf("%w: avatar upload id and owner user id are required", ErrInternal)
+	}
+
+	pendingUpload, err := ps.repo.pendingAvatarUpload(ctx, pendingAvatarUploadParams{ID: p.ID, OwnerUserID: p.OwnerUserID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			status, statusErr := ps.repo.avatarUploadStatus(ctx, pendingAvatarUploadParams{ID: p.ID, OwnerUserID: p.OwnerUserID})
+			if statusErr == nil && status == "ready" {
+				return nil
+			}
+			return ErrAvatarUploadNotFound
+		}
+		return fmt.Errorf("%w: prepare avatar upload completion: %w", ErrInternal, err)
+	}
+
+	fail := func(reason string, cause error, deleteObject bool) error {
+		if err := ps.repo.failPendingAvatarUpload(ctx, failPendingAvatarUploadParams{
+			ID:          pendingUpload.ID,
+			OwnerUserID: pendingUpload.OwnerUserID,
+			Reason:      reason,
+		}); err != nil {
+			return errors.Join(cause, fmt.Errorf("%w: mark avatar upload failed: %w", ErrInternal, err))
+		}
+		if deleteObject {
+			if err := ps.repo.deleteObject(ctx, pendingUpload.Bucket, pendingUpload.Key); err != nil {
+				return errors.Join(cause, fmt.Errorf("%w: delete failed avatar upload object: %w", ErrInternal, err))
+			}
+		}
+		return cause
+	}
+
+	headData, err := ps.repo.headObject(ctx, pendingUpload.Bucket, pendingUpload.Key)
+	if err != nil {
+		if errors.Is(err, ErrUploadNotFound) {
+			return fail("upload_not_found", err, false)
+		}
+		if errors.Is(err, ErrUploadMetadataMissing) {
+			return fail("missing_object_metadata", err, true)
+		}
+		return fail("head_object_failed", err, true)
+	}
+	if headData.Size != pendingUpload.Size {
+		return fail("size_mismatch", ErrUploadSizeMismatch, true)
+	}
+	if headData.Size > maxAvatarBytes {
+		return fail("file_too_large", ErrFileTooLarge, true)
+	}
+	contentType, _, err := normalizeImageContentType(headData.ContentType)
+	if err != nil {
+		return fail("unsupported_content_type", err, true)
+	}
+	if contentType != pendingUpload.ContentType {
+		return fail("content_type_mismatch", ErrUnsupportedFileType, true)
+	}
+
+	object, err := ps.repo.getObject(ctx, pendingUpload.Bucket, pendingUpload.Key)
+	if err != nil {
+		if errors.Is(err, ErrUploadNotFound) {
+			return fail("upload_not_found", err, false)
+		}
+		return fail("get_object_failed", err, true)
+	}
+
+	validationErr := validateAvatarImage(io.LimitReader(object, maxAvatarBytes+1), contentType)
+	if closeErr := object.Close(); closeErr != nil {
+		return fail("close_object_failed", fmt.Errorf("close avatar upload object: %w", closeErr), true)
+	}
+	if validationErr != nil {
+		return fail(avatarImageFailureReason(validationErr), validationErr, true)
+	}
+
+	previous, err := ps.repo.promoteAvatarUpload(ctx, *pendingUpload)
+	if err != nil {
+		return fmt.Errorf("%w: promote avatar upload: %w", ErrInternal, err)
+	}
+	if previous != nil && (previous.Bucket != pendingUpload.Bucket || previous.ObjectKey != pendingUpload.Key) {
+		if err := ps.repo.deleteObject(ctx, previous.Bucket, previous.ObjectKey); err != nil {
+			slog.Warn("delete replaced avatar object", "error", err, "user_id", p.OwnerUserID, "object_key", previous.ObjectKey)
+		} else if err := ps.repo.markAvatarUploadDeleted(ctx, avatarObjectData{OwnerUserID: p.OwnerUserID, Bucket: previous.Bucket, Key: previous.ObjectKey}); err != nil {
+			slog.Warn("mark replaced avatar upload deleted", "error", err, "user_id", p.OwnerUserID, "object_key", previous.ObjectKey)
+		}
 	}
 
 	return nil

@@ -13,6 +13,7 @@ require (
 	github.com/nbutton23/zxcvbn-go v0.0.0-20210217022336-fa2cb2858354
 	github.com/pressly/goose/v3 v3.27.1
 	golang.org/x/crypto v0.52.0
+	golang.org/x/image v0.37.0
 	golang.org/x/text v0.37.0
 )
 

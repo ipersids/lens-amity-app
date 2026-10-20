@@ -15,39 +15,37 @@ type UploadIntentResponse = {
   photoID: string;
   url: string;
   method: string;
-  header: Record<string, string[]>;
+  formDataValues: Record<string, string>;
 };
 
 const uploadIntent = async (photoInfo: UploadIntentItem): Promise<UploadIntentResponse> => {
-  const { data } = await internalApi.put<UploadIntentResponse>(`${basePhotoURI}/upload`, photoInfo);
+  const { data } = await internalApi.post<UploadIntentResponse>(
+    `${basePhotoURI}/upload`,
+    photoInfo,
+  );
 
   return data;
 };
 
 const uploadFile = async (intent: UploadIntentResponse, file: File): Promise<void> => {
-  const headers: Record<string, string> = {};
+  const form = new FormData();
 
-  Object.entries(intent.header).forEach(([key, values]) => {
-    if (key.toLowerCase() === "host") return;
-
-    headers[key.toLowerCase()] = values.join(",");
-  });
-
-  if (!headers["content-type"]) {
-    headers["content-type"] = file.type;
+  for (const [key, value] of Object.entries(intent.formDataValues)) {
+    form.append(key, value);
   }
+
+  form.append("file", file);
 
   await axios.request({
     url: intent.url,
-    method: intent.method,
-    data: file,
-    headers,
+    method: "post",
+    data: form,
     withCredentials: false,
   });
 };
 
 const completeUpload = async (photoID: string): Promise<void> => {
-  await internalApi.put(`${basePhotoURI}/${photoID}/complete`);
+  await internalApi.post(`${basePhotoURI}/${photoID}/complete`);
 };
 
 const upload = async (photoInfo: UploadIntentItem, file: File): Promise<void> => {
