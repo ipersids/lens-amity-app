@@ -19,6 +19,7 @@
     "radix-ui": "^1.6.7",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-easy-crop": "^6.2.4",
     "react-router": "^7.16.0",
     "zustand": "^5.0.14",
     "zxcvbn": "^4.4.2"
