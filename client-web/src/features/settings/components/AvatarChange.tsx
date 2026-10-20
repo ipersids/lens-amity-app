@@ -3,10 +3,7 @@ import { Dialog } from "radix-ui";
 import { useRef, useState } from "react";
 import type { Area } from "react-easy-crop";
 import Cropper from "react-easy-crop";
-
-type AvatarChangeProps = {
-  onSave: (file: File) => void;
-};
+import useUpdateAvatar from "../../../hooks/useUpdateAvatar";
 
 const outputSize = 512;
 const initialCrop = { x: 0, y: 0 };
@@ -72,15 +69,16 @@ const createCroppedAvatar = async (imageURL: string, crop: Area) => {
   return new File([blob], "avatar.webp", { type: "image/webp" });
 };
 
-const AvatarChange = ({ onSave }: AvatarChangeProps) => {
+const AvatarChange = () => {
   const [open, setOpen] = useState(false);
   const [imageURL, setImageURL] = useState<string>();
   const [crop, setCrop] = useState(initialCrop);
   const [zoom, setZoom] = useState(1);
   const [croppedArea, setCroppedArea] = useState<Area>();
   const [error, setError] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const updateAvatar = useUpdateAvatar();
+  const isSaving = updateAvatar.isPending;
 
   const resetCrop = () => {
     setCrop(initialCrop);
@@ -121,16 +119,17 @@ const AvatarChange = ({ onSave }: AvatarChangeProps) => {
   const handleSave = async () => {
     if (!imageURL || !croppedArea || isSaving) return;
 
-    setIsSaving(true);
     setError("");
     try {
-      onSave(await createCroppedAvatar(imageURL, croppedArea));
+      const croppedFile = await createCroppedAvatar(imageURL, croppedArea);
+      await updateAvatar.mutateAsync({
+        avatarInfo: { contentType: croppedFile.type, size: croppedFile.size },
+        file: croppedFile,
+      });
       setOpen(false);
       resetEditor();
     } catch (error) {
       setError(error instanceof Error ? error.message : "Unable to save the cropped image.");
-    } finally {
-      setIsSaving(false);
     }
   };
 
