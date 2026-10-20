@@ -25,7 +25,7 @@ const LoginForm = () => {
 
     try {
       await login({ username: trimmedUsername, password });
-      navigate("/", { replace: true });
+      navigate("/profile", { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Oops, something went wrong.");
     }

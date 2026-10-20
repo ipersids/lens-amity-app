@@ -110,7 +110,7 @@ const AddPhotoPage = () => {
         },
         selectedFile,
       );
-      navigate("/");
+      navigate("/profile");
     } catch (err: unknown) {
       throw new Error(getApiError(err).error.message);
     } finally {

@@ -130,7 +130,7 @@ const ProfileSettings = () => {
   const { isPending, isError, data: profile } = useProfile(currentUser?.username);
 
   if (!currentUser) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   if (isError) {

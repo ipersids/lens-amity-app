@@ -8,7 +8,7 @@ const AccountSettings = () => {
   const currentUser = useUser();
 
   if (!currentUser) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   return (

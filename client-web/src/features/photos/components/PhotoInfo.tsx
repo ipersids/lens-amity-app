@@ -59,7 +59,7 @@ const PhotoInfo = ({ profile, photoID }: PhotoInfoParams) => {
               className="photo-info-arrow photo-info-arrow--previous"
               to={`/users/${encodeURIComponent(profile.username)}/photos/${encodeURIComponent(data.previousPhotoID)}`}
             >
-              <ChevronLeftIcon aria-hidden="true" />
+              <ChevronLeftIcon className="photo-info-arrow-icon" aria-hidden="true" />
             </Link>
           )}
           {data.nextPhotoID && (
@@ -68,7 +68,7 @@ const PhotoInfo = ({ profile, photoID }: PhotoInfoParams) => {
               className="photo-info-arrow photo-info-arrow--next"
               to={`/users/${encodeURIComponent(profile.username)}/photos/${encodeURIComponent(data.nextPhotoID)}`}
             >
-              <ChevronRightIcon aria-hidden="true" />
+              <ChevronRightIcon className="photo-info-arrow-icon" aria-hidden="true" />
             </Link>
           )}
         </section>
