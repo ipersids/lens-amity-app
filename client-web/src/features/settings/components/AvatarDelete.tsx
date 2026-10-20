@@ -1,4 +1,4 @@
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { TrashIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { Dialog } from "radix-ui";
 import { useState } from "react";
 import useDeleteAvatar from "../../../hooks/useDeleteAvatar";
@@ -7,19 +7,20 @@ const AvatarDelete = () => {
   const [open, setOpen] = useState(false);
   const deleteAvatar = useDeleteAvatar();
 
-  const handleDeletClick = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleDelete = () => {
     deleteAvatar.mutate();
-
     setOpen(false);
   };
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
-        <button className="settings-avatar-button settings-avatar-delete-button" type="button">
-          Delete
+        <button
+          className="settings-avatar-button settings-avatar-delete-button"
+          type="button"
+          aria-label="Delete profile photo"
+        >
+          <TrashIcon aria-hidden="true" />
         </button>
       </Dialog.Trigger>
 
@@ -43,7 +44,7 @@ const AvatarDelete = () => {
             <button
               className="dialog-save-button dialog-delete-button"
               type="button"
-              onClick={(event) => handleDeletClick(event)}
+              onClick={handleDelete}
               disabled={deleteAvatar.isPending}
             >
               {deleteAvatar.isPending && <span className="button-spinner" aria-hidden="true" />}
