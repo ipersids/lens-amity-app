@@ -3,6 +3,7 @@ import Layout from "./features/Layout";
 import { AccountSettings, ProfileSettings } from "./features/settings";
 import AddPhotoPage from "./pages/AddPhotoPage";
 import AuthPage from "./pages/AuthPage";
+import HomePage from "./pages/HomePage";
 import MyProfilePageRedirect from "./pages/MyProfilePageRedirect";
 import PhotoPage from "./pages/PhotoPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -14,7 +15,7 @@ function App() {
     <div className="app">
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<p>APP</p>} />
+          <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/signup" element={<AuthPage mode="signup" />} />
 

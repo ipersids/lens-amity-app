@@ -10,7 +10,7 @@ type ProfilePhotosProps = {
   canViewPhotos: boolean;
 };
 
-const pageSize = 1;
+const pageSize = 24;
 
 const PhotosFeed = ({ photos, username }: { photos: Photo[]; username: string }) => {
   if (!photos.length) {
