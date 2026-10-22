@@ -48,10 +48,11 @@ const completeUpload = async (photoID: string): Promise<void> => {
   await internalApi.post(`${basePhotoURI}/${photoID}/complete`);
 };
 
-const upload = async (photoInfo: UploadIntentItem, file: File): Promise<void> => {
+const upload = async (photoInfo: UploadIntentItem, file: File): Promise<string> => {
   const photoIntentData = await uploadIntent(photoInfo);
   await uploadFile(photoIntentData, file);
   await completeUpload(photoIntentData.photoID);
+  return photoIntentData.photoID;
 };
 
 const deletePhoto = async (photoID: string): Promise<void> => {

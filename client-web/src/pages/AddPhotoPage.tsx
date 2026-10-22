@@ -7,8 +7,9 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router";
+import useAddPhoto from "../hooks/useAddPhoto";
 import { getApiError } from "../services/api";
-import photoService from "../services/photo";
+import { useUser } from "../stores/auth";
 
 const DATE_ERROR = "Date must be within the last 7 days.";
 
@@ -38,15 +39,17 @@ const toApiDate = (value: string) => {
 
 const AddPhotoPage = () => {
   const navigate = useNavigate();
+  const currentUser = useUser();
   const { min: minDate, max: maxDate } = useMemo(getDateRange, []);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [photoDate, setPhotoDate] = useState<string>(maxDate);
   const [dateError, setDateError] = useState<string>("");
+  const [uploadError, setUploadError] = useState<string>("");
   const [title, setTitle] = useState<string>("");
   const [description, setDescription] = useState<string>("");
+  const addPhoto = useAddPhoto();
 
   useEffect(() => {
     return () => {
@@ -96,25 +99,27 @@ const AddPhotoPage = () => {
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || !currentUser) return;
 
-    setIsLoading(true);
+    setUploadError("");
+
     try {
-      await photoService.upload(
-        {
+      const photoID = await addPhoto.mutateAsync({
+        photoInfo: {
           date: toApiDate(photoDate),
           contentType: selectedFile.type,
           size: selectedFile.size,
-          title: title,
-          description: description,
+          title,
+          description,
         },
-        selectedFile,
+        file: selectedFile,
+      });
+
+      navigate(
+        `/users/${encodeURIComponent(currentUser.username)}/photos/${encodeURIComponent(photoID)}`,
       );
-      navigate("/profile");
-    } catch (err: unknown) {
-      throw new Error(getApiError(err).error.message);
-    } finally {
-      setIsLoading(false);
+    } catch (error: unknown) {
+      setUploadError(getApiError(error).error.message);
     }
   };
 
@@ -193,11 +198,16 @@ const AddPhotoPage = () => {
 
         <button
           type="button"
-          disabled={!!dateError || !selectedFile || isLoading}
+          disabled={!!dateError || !selectedFile || addPhoto.isPending}
           onClick={handleUpload}
         >
-          Add photo
+          {addPhoto.isPending ? "Adding photo..." : "Add photo"}
         </button>
+        {uploadError && (
+          <p className="auth-error" role="alert">
+            {uploadError}
+          </p>
+        )}
       </form>
     </section>
   );
